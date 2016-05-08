@@ -26,22 +26,32 @@ class WindowsISCSIapi(ISCSIapi):
     def login_to_target(self, iqn,  ip=None):
         '''recives an iqn as string and login to it
         '''
-        def _set_login_options(self):
-            client.execute_query('SELECT * from MSIscsiInitiator_TargetLoginOptions')
-
         from infi.wmi import WmiClient
         if not ip:
             execute_assert_success(['iscsicli', 'QLoginTarget', iqn])
         else:
-            client = WmiClient('root\wmi')
-            for connection in client.execute_query('SELECT * from  MSIscsiInitiator_TargetClass'):
+            client = WmiClient('root\\wmi')
+            for connection in client.execute_query('SELECT * from  MSIscsiInitiator_TargetClass WHERE TargetName={!r}'.format(iqn)):
                 method = connection.Methods_.Item("Login")
                 parameters = method.InParameters.SpawnInstance_()
                 parameters.Properties_.Item("IsPersistent").Value = True
-#                parameters.Properties_.Item("TargetPortal").Value =
-                parameters.Properties_.Item("LoginOptions").Value = True
+                login_options = connection.Properties_.Item('LoginOptions').Value
+                login_options.Properties_.Item('LoginFlags').Value = 2
+                login_options.Properties_.Item('MaximumConnections').Value = 1
+                parameters.Properties_.Item("LoginOptions").Value = login_options
+                parameters.Properties_.Item("IsInformationalSession").Value = False
+                parameters.Properties_.Item("InitiatorPortNumber").Value = 0
 
-
+                for portal_group in connection.Properties_.Item('PortalGroups').Value:
+                    for portal in portal_group.Properties_.Item('Portals').Value:
+                        if portal.Properties_.Item('Address').Value == ip:
+                            parameters.Properties_.Item('TargetPortal').Value = portal
+                            print parameters.GetObjectText_()
+                            result = connection.ExecMethod_('Login', parameters)
+                            print result.Properties_.Item('UniqueSessionId').Value
+                            print result.Properties_.Item('UniqueConnectionId').Value
+                            return
+            raise RuntimeError()
 
     def login_to_all_availble_targets(self):
         def _uniq(_list):
@@ -65,7 +75,7 @@ class WindowsISCSIapi(ISCSIapi):
         '''recives an iqn as string and logsout of it
         '''
         from infi.wmi import WmiClient
-        client = WmiClient('root\wmi')
+        client = WmiClient('root\\wmi')
         query = client.execute_query('SELECT * from MSIscsiInitiator_SessionClass')
         for connection in query:
             if iqn == connection.Properties_.Item('TargetName').Value:
@@ -74,7 +84,7 @@ class WindowsISCSIapi(ISCSIapi):
 
     def logout_from_all_targets(self):
         from infi.wmi import WmiClient
-        client = WmiClient('root\wmi')
+        client = WmiClient('root\\wmi')
         query = client.execute_query('SELECT * from MSIscsiInitiator_SessionClass')
         for connection in query:
             session_id = connection.Properties_.Item('SessionId').Value
@@ -88,7 +98,7 @@ class WindowsISCSIapi(ISCSIapi):
         '''
         from infi.wmi import WmiClient
         availble_targets = []
-        client = WmiClient('root\wmi')
+        client = WmiClient('root\\wmi')
         for connection in client.execute_query('SELECT * from  MSIscsiInitiator_TargetClass'):
             iqn = connection.Properties_.Item('TargetName').Value
             for portal in connection.Properties_.Item('PortalGroups').Value[0].Properties_.Item('Portals').Value:
@@ -132,3 +142,15 @@ class WindowsISCSIapi(ISCSIapi):
                         logger.debug("service MSiSCSI started")
                     except WinError as e:
                         logger.error("service failed to start {!r}".format(e))
+
+    def _uninstall_iscsi_software_initiator(self):
+        import infi.win32service
+        if self.is_iscsi_sw_installed():
+            logger.debug("shutting down MSiSCSI service")
+            with infi.win32service.ServiceControlManagerContext() as scm:
+                with scm.open_service('MSiSCSI') as service:
+                    try:
+                        service.stop()
+                        logger.debug("service MSiSCSI stopped")
+                    except WinError as e:
+                        logger.error("service failed to stop {!r}".format(e))
