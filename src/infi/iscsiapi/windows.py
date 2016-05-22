@@ -1,123 +1,281 @@
 from infi.execute import execute_assert_success, execute, ExecutionError
-from .base import ISCSIapi
+from . import base
 from ctypes import WinError
+from infi.dtypes.iqn import IQN
 
 from logging import getLogger
 logger = getLogger(__name__)
 
-class WindowsISCSIapi(ISCSIapi):
+class WindowsISCSIapi(base.ConnectionManager):
 
-    #from https://msdn.microsoft.com/en-us/library/windows/desktop/bb870791(v=vs.85).aspx
-    ISCSI_NO_AUTH_TYPE = 0
-    ISCSI_CHAP_AUTH_TYPE = 1
-    ISCSI_MUTUAL_CHAP_AUTH_TYPE = 2
+    def __init__(self, *args, **kwargs):
+        super(WindowsISCSIapi, self).__init__(*args, **kwargs)
+        self._initiator = None
 
 
-    def discover_target(self, ip_adder):
-        '''initiate discovery and returns a list of dicts which contain all availble targets
-        '''
-        # right now ( win 2008 ) WMI doesn't support rescan so we are using cli
-        try:
-            execute_assert_success(['iscsicli', 'QAddTargetPortal', ip_adder])
-        except ExecutionError as e:
-            logger.error("couldn't connect to ip_adder {!r}, error: {!r}".format(ip_adder, e))
-        return self.get_sessions()
-
-    def login_to_target(self, iqn,  ip=None):
-        '''recives an iqn as string and login to it
-        '''
+    def _create_initiator_obj_if_needed(self):
         from infi.wmi import WmiClient
-        if not ip:
-            execute_assert_success(['iscsicli', 'QLoginTarget', iqn])
-        else:
+        if not self._initiator:
+            if not self.is_iscsi_sw_installed():
+                raise RuntimeError("iscsi sw isn't running")
             client = WmiClient('root\\wmi')
-            for connection in client.execute_query('SELECT * from  MSIscsiInitiator_TargetClass WHERE TargetName={!r}'.format(iqn)):
-                method = connection.Methods_.Item("Login")
-                parameters = method.InParameters.SpawnInstance_()
-                parameters.Properties_.Item("IsPersistent").Value = True
-                login_options = connection.Properties_.Item('LoginOptions').Value
-                login_options.Properties_.Item('LoginFlags').Value = 2
-                login_options.Properties_.Item('MaximumConnections').Value = 1
-                parameters.Properties_.Item("LoginOptions").Value = login_options
-                parameters.Properties_.Item("IsInformationalSession").Value = False
-                parameters.Properties_.Item("InitiatorPortNumber").Value = 0
-
-                for portal_group in connection.Properties_.Item('PortalGroups').Value:
-                    for portal in portal_group.Properties_.Item('Portals').Value:
-                        if portal.Properties_.Item('Address').Value == ip:
-                            parameters.Properties_.Item('TargetPortal').Value = portal
-                            print parameters.GetObjectText_()
-                            result = connection.ExecMethod_('Login', parameters)
-                            print result.Properties_.Item('UniqueSessionId').Value
-                            print result.Properties_.Item('UniqueConnectionId').Value
-                            return
-            raise RuntimeError()
-
-    def login_to_all_availble_targets(self):
-        def _uniq(_list):
-            '''get a list and return unique list'''
-            if len(_list) == 0:
-                return []
-            uniq_list = [_list[0]]
-            for item in _list:
-                if item in uniq_list:
-                    continue
-                else:
-                    uniq_list.append(item)
-            return uniq_list
-
-        iqns = [ target['iqn'] for target in self.get_sessions()]
-        for iqn in _uniq(iqns):
-            self.login_to_target(iqn)
+            query = client.execute_query('SELECT * from  MSIscsiInitiator_InitiatorClass')
+            initiator_name = list(query)[0].Properties_.Item('InitiatorName').Value
+            iqn = self.get_source_iqn()
+            self._initiator = base.Initiator(iqn, initiator_name)
 
 
-    def logout_from_target(self, iqn):
-        '''recives an iqn as string and logsout of it
+    def _uniq(self, _list):
+        '''get a list and return unique list'''
+        if len(_list) == 0:
+            return []
+        uniq_list = [_list[0]]
+        for item in _list:
+            if item in uniq_list:
+                continue
+            else:
+                uniq_list.append(item)
+        return uniq_list
+
+    def discover(self, ip_address, port=3260, outband_chap=None, inbound_chap=None):
+        '''perform an iscsi discovery to an ip address
+        '''
+        # TODO: support chap
+        # right now ( win 2008 ) WMI doesn't support rescan so we are using cli
+        self._create_initiator_obj_if_needed()
+        try:
+            execute_assert_success(['iscsicli', 'AddTargetPortal', str(ip_address), str(port)])
+        except ExecutionError as e:
+            msg = """couldn't connect to ip_address {!r}, error: {!r}
+This could be due to one of the follwoing reasons:
+1. there is no IP connectivity between your host and {!r}
+2. the iSCSI servier is down """
+            logger.error(msg.format(ip_address, e, ip_address))
+        endpoints = []
+        for session in self._get_connectivity_using_wmi():
+            endpoints.append(base.Endpoint(session['dst_ip'], session['dst_port']))
+            if session['dst_ip'] == ip_address:
+                iqn = IQN(session['iqn'])
+        return base.Target(endpoints, inbound_chap, outband_chap, ip_address, iqn)
+
+    # def discover_target(self, ip_adder):
+        # '''initiate discovery and returns a list of dicts which contain all availble targets
+        # '''
+        ## right now ( win 2008 ) WMI doesn't support rescan so we are using cli
+        # try:
+            # execute_assert_success(['iscsicli', 'QAddTargetPortal', ip_adder])
+        # except ExecutionError as e:
+            # logger.error("couldn't connect to ip_adder {!r}, error: {!r}".format(ip_adder, e))
+        # return self._get_connectivity_using_wmi()
+
+    def login(self, target, endpoint, num_of_connections=1):
+        '''recives target and endpoing and login to it
+        '''
+        # Due to a bug only in 2008 multipulie sessions isn't hadled ok unless initator name is montioned
+        # Therefore we don't use Qlogin, Details:
+        # https://social.technet.microsoft.com/Forums/office/en-US/4b2420d6-0f28-4d12-928d-3920896f582d/iscsi-initiator-target-not-reconnecting-on-reboot?forum=winserverfiles
+        # iscsicli LoginTarget <TargetName> <ReportToPNP>
+        #              <TargetPortalAddress> <TargetPortalSocket>
+        #              <InitiatorInstance> <Port number> <Security Flags>
+        #             <Login Flags> <Header Digest> <Data Digest>
+        #             <Max Connections> <DefaultTime2Wait>
+        #             <DefaultTime2Retain> <Username> <Password> <AuthType> <Key>
+        #             <Mapping Count> <Target Lun> <OS Bus> <Os Target>
+        #             <OS Lun> ...
+        args = ['iscsicli', 'LoginTarget', str(target.get_iqn()), 't',\
+        endpoint.get_ip_address(), str(endpoint.get_port()), \
+        self._initiator.get_initiator_name(), '*', '0', '*', '*', '0', '1', '0', '0', '*', '*', '0', '0', '0']
+        logger.info("running iscsicli LoginTarget {!r}".format(' '.join(args)))
+        # TODO: check if session is active if yes then not fail
+        # make session with full features ( chap )
+        process = execute(args)
+        if int(process.get_returncode()) != 0:
+            logger.info("couldn't login to {!r} {!r} {!r} because: {!r}"\
+                        .format(target.get_iqn(), endpoint.get_ip_address(), endpoint.get_port(), process.get_stdout()))
+            if not "target has already been logged in" in process.get_stdout():
+                return
+        for session in self.get_sessions():
+            for end_point in session.get_target().get_endpoints():
+                if end_point.get_ip_address() == endpoint.get_ip_address():
+                    return base.Session(target, self._initiator.get_iqn(), session.source_ip(), session.get_uid())
+
+
+    def login_all(self, target):
+        ''' login to all endpoin of a target and return the session it achived
+        '''
+        for endpoint in target.get_endpoints():
+            self.login(target, endpoint)
+        return self.get_sessions(target=target)
+
+
+    # def login_to_target(self, iqn,  ip=None, port=3260):
+        # '''recives an iqn as string and login to it
+        # '''
+        ##add exception for running login without discover
+        # from infi.wmi import WmiClient
+        # if not ip:
+            # execute_assert_success(['iscsicli', 'QLoginTarget', iqn])
+        # else:
+            # client = WmiClient('root\\wmi')
+            # query = client.execute_query('SELECT * from  MSIscsiInitiator_InitiatorClass')
+            # initiator_name = list(query)[0].Properties_.Item('InitiatorName').Value
+            # logger.info("running iscsicli LoginTarget {!r} t {!r} {!r} {!r} {!r} 0 2 0 0 1 0 0 * * 0 0 0".format(iqn, ip, port, initiator_name, port))
+            # execute_assert_success(['iscsicli', 'LoginTarget', iqn, 't', ip, str(port), initiator_name, str(port), '0', '2', '0', '0', '1', '0', '0', '*', '*', '0', '0', '0'])
+
+
+    # def login_to_all_availble_targets(self):
+        # iqns = [ target['iqn'] for target in self._get_connectivity_using_wmi()]
+        # for iqn in self._uniq(iqns):
+            # self.login_to_target(iqn)
+
+
+    def logout(self, session):
+        '''recive a session and perform an iSCSI logout
+        '''
+        execute_assert_success('iscsicli', 'LogoutTarget', session.get_uid())
+
+    def logout_all(self, target):
+        '''recive a target and logout of it
+        '''
+        for session in self.get_sessions(target):
+            execute_assert_success('iscsicli', 'LogoutTarget', session.get_uid())
+
+    # def logout_from_target(self, iqn):
+        # '''recives an iqn as string and logsout of it
+        # '''
+        # from infi.wmi import WmiClient
+        # client = WmiClient('root\\wmi')
+        # query = client.execute_query('SELECT * from MSIscsiInitiator_SessionClass')
+        # for connection in query:
+            # if iqn == connection.Properties_.Item('TargetName').Value:
+                # logger.info("logging out of {!r}".format(session_id))
+                # execute_assert_success('iscsicli', 'LogoutTarget', connection.Properties_.Item('SessionId').Value)
+
+    def get_source_iqn(self):
+        from infi.wmi import WmiClient
+        client = WmiClient('root\\wmi')
+        query = client.execute_query('SELECT * FROM MSIscsiInitiator_MethodClass')
+        iqn = list(query)[0].Properties_.Item("ISCSINodeName").Value
+        return IQN(iqn)
+
+
+    def set_source_iqn(self, iqn):
+        '''recive an iqn as a string, verify it's valid and set it.
+        returns iqn type of the new IQN or None if fails
         '''
         from infi.wmi import WmiClient
+        from infi.dtypes.iqn import InvalidIQN
+        logger.info("iqn before the change is {!r} going to change to {!r}".format(self.get_source_iqn(), iqn))
+        try:
+            IQN(iqn)
+        except InvalidIQN, e:
+            logger.error("iqn is invalid {!r}".format(e))
+            return
         client = WmiClient('root\\wmi')
-        query = client.execute_query('SELECT * from MSIscsiInitiator_SessionClass')
-        for connection in query:
-            if iqn == connection.Properties_.Item('TargetName').Value:
-                logger.info("logging out of {!r}".format(session_id))
-                execute_assert_success('iscsicli', 'LogoutTarget', connection.Properties_.Item('SessionId').Value)
-
-    def logout_from_all_targets(self):
-        from infi.wmi import WmiClient
-        client = WmiClient('root\\wmi')
-        query = client.execute_query('SELECT * from MSIscsiInitiator_SessionClass')
-        for connection in query:
-            session_id = connection.Properties_.Item('SessionId').Value
-            execute_assert_success('iscsicli', 'LogoutTarget', session_id)
-            logger.info("logged out of {!r}".format(session_id))
+        query = list(client.execute_query("SELECT * FROM MSIscsiInitiator_MethodClass"))[0]
+        initiator_name = query.Methods_.Item("SetIscsiInitiatorNodeName")
+        parameters = initiator_name.InParameters.SpawnInstance_()
+        parameters.Properties_.Item("InitiatorNodeName").Value = iqn
+        query.ExecMethod_('SetIscsiInitiatorNodeName', parameters)
+        logger.info("iqn is now {!r}".format(self.get_source_iqn()))
+        return self.get_source_iqn()
 
 
+    # def logout_from_all_targets(self):
+        # from infi.wmi import WmiClient
+        # client = WmiClient('root\\wmi')
+        # query = client.execute_query('SELECT * from MSIscsiInitiator_SessionClass')
+        # for connection in query:
+            # session_id = connection.Properties_.Item('SessionId').Value
+            # execute_assert_success(['iscsicli', 'LogoutTarget', session_id])
+            # logger.info("logged out of {!r}".format(session_id))
 
-    def get_sessions(self, iqn=None):
-        '''returns a list of dicts which contain all active sessions or only iqn specific active session
+
+
+    def _get_connectivity_using_wmi(self):
+        '''returns a list of dicts which contain all availble targets with it's main parameters
         '''
         from infi.wmi import WmiClient
         availble_targets = []
         client = WmiClient('root\\wmi')
-        for connection in client.execute_query('SELECT * from  MSIscsiInitiator_TargetClass'):
-            iqn = connection.Properties_.Item('TargetName').Value
-            for portal in connection.Properties_.Item('PortalGroups').Value[0].Properties_.Item('Portals').Value:
-                availble_targets.append({'dst_ip':portal.Properties_.Item('Address').Value ,\
-                'dst_port': portal.Properties_.Item('Port').Value, 'no_conn': 1, 'iqn': iqn, 'target_obj': connection})
+        for target in client.execute_query('SELECT * from  MSIscsiInitiator_TargetClass'):
+            iqn = target.Properties_.Item('TargetName').Value
+            for portal in target.Properties_.Item('PortalGroups').Value[0].Properties_.Item('Portals').Value:
+                target_connectivity = {'dst_ip':portal.Properties_.Item('Address').Value ,\
+                'dst_port': portal.Properties_.Item('Port').Value, 'iqn': iqn}
+                if not target_connectivity in availble_targets:
+                    availble_targets.append(target_connectivity)
         return availble_targets
+
+
+    def get_discovered_targets(self):
+        '''return a list of dicvoered target objects
+        '''
+        # TODO add chap support
+        from infi.wmi import WmiClient
+        discovered_targets = []
+        endpoints = []
+        client = WmiClient('root\\wmi')
+        for query in client.execute_query('SELECT * from  MSIscsiInitiator_TargetClass'):
+            iqn = query.Properties_.Item('TargetName').Value
+            for portal in query.Properties_.Item('PortalGroups').Value[0].Properties_.Item('Portals').Value:
+                endpoint = base.endpoint(portal.Properties_.Item('Address').Value, portal.Properties_.Item('Port').Value)
+                if not endpoint in endpoints:
+                    endpoints.append(endpoint)
+            target = base.Target(endpoints, None, None, discovery_endpoint, iqn)
+            if not target in discovered_targets:
+                discovered_targets.append(target)
+        return discovered_targets
+
+
+    def get_sessions(self, target=None):
+        '''recive a target or None and return a list of all available sessions
+        '''
+        #currently assumes only one connection over each session ( conn_0 )
+        def _get_sessions_of_target(condition=''):
+            from infi.wmi import WmiClient
+            client = WmiClient('root\\wmi')
+            wql =  "SELECT * from MSiSCSIInitiator_SessionClass " + condition
+            query = client.execute_query(wql)
+            target_sessions = []
+            for session in query:
+                uid = session.Properties_.Item('SessionId').Value
+                conn_0 = list(session.Properties_.Item('ConnectionInformation').Value)[0]
+                source_ip = conn_0.Properties_.Item('InitiatorAddress').Value
+                source_iqn = session.Properties_.Item('InitiatorName').Value
+                target_sessions.append(base.Session(target, source_ip, source_iqn, uid))
+            return target_sessions
+
+        from infi.wmi import WmiClient
+        client = WmiClient('root\\wmi')
+        if target:
+            condition = "where TargetName='%s'" % str(target.get_iqn())
+            return _get_sessions_of_target(condition=condition)
+        else:
+            return _get_sessions_of_target()
+
 
     def rescan_all_sessions(self):
         '''rescan all availble sessions
         '''
         raise NotImplementedError()
 
-    def delete_discovered_sessions(self, iqn=None):
+    # def delete_discovered_sessions(self, iqn=None):
+        # '''delete all discoverd sessions or only iqn specific active sessions
+        # '''
+        # for session in self._get_connectivity_using_wmi():
+            # if not iqn:
+                # execute_assert_success(['iscsicli', 'RemoveTargetPortal', str(session['dst_ip']), str(session['dst_port'])])
+            # elif iqn == session['iqn']:
+                # execute_assert_success(['iscsicli', 'RemoveTargetPortal', session['dst_ip'], session['dst_port']])
+
+    def undiscover(self, target=None):
         '''delete all discoverd sessions or only iqn specific active sessions
         '''
-        for session in self.get_sessions():
-            if not iqn:
+        for session in self._get_connectivity_using_wmi():
+            if not target:
                 execute_assert_success(['iscsicli', 'RemoveTargetPortal', str(session['dst_ip']), str(session['dst_port'])])
-            elif iqn == session['iqn']:
+            elif base.target.ge == session['iqn']:
                 execute_assert_success(['iscsicli', 'RemoveTargetPortal', session['dst_ip'], session['dst_port']])
 
     def is_iscsi_sw_installed(self):
