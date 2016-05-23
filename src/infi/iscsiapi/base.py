@@ -6,14 +6,13 @@ from infi.dtypes.iqn import IQN
 class Session(object):
     '''class that contains the iscsi session information
     '''
-    def __init__(self, target, source_ip, source_iqn, uid):
+    def __init__(self, target_endpoint, source_ip, source_iqn, uid):
         # self._number_of_connections = number_of_connections
         #self._hct = hct
-        self._target = target
+        self._target_endpoint = target_endpoint
         self._source_ip = source_ip
         self._source_iqn = source_iqn
         self._uid = uid
-
 
     # def get_number_of_connections(self):
         # return self._number_of_connections
@@ -22,10 +21,10 @@ class Session(object):
         return self._hct
 
     def get_uid(self):
-        self._uid
+        return self._uid
 
-    def get_target(self):
-        return self._target
+    def get_target_endpoint(self):
+        return self._target_endpoint
 
     def get_source_ip(self):
         return self._source_ip
@@ -58,6 +57,9 @@ class Target(object):
         self._discovery_endpoint = discovery_endpoint
         self._iqn = iqn
 
+    def __eq__(self, other):
+        return self._iqn == other.get_iqn()
+
     def get_endpoints(self):
         return self._endpoints
 
@@ -72,6 +74,7 @@ class Target(object):
 
     def get_iqn(self):
         return self._iqn
+
 
 class Initiator(object):
     '''class that contain the initiator iscsi details
@@ -101,63 +104,77 @@ class Endpoint(object):
         return self._port
 
 
+class SoftwareInitiator(object):
+    def is_installed(self):
+        '''Platform specific function to understand if iSCSI can be used now
+        '''
+        raise NotImplementedError()
+
+    def install(self):
+        '''Platfrom specific function to active the iSCSI feature on an OS
+        '''
+        raise NotImplementedError()
+
+    def uninstall(self):
+        '''Plarform specific function to deactivate iSCSI software
+        '''
+        raise NotImplementedError()
+
+
 class ConnectionManager(object):
     '''Class that contain the main iscsi methods for connecting iscsi initiator
     to an iscsi target
     '''
-    def discover(ip_address, port=3260, outband_chap=None, inbound_chap=None):
+    def discover(self, ip_address, port=3260, outband_chap=None, inbound_chap=None):
         '''perform an iscsi discovery to an ip address
+        '''
+        raise NotImplementedError()
+
+    def login(self, target, endpoint, num_of_connections=1):
+        '''recives target and endpoing and login to it
+        '''
+        raise NotImplementedError()
+
+    def login_all(self, target):
+        ''' login to all endpoin of a target and return the session it achived
+        '''
+        raise NotImplementedError()
+
+    def logout(self, session):
+        '''recive a session and perform an iSCSI logout
+        '''
+        raise NotImplementedError()
+
+    def logout_all(self, target):
+        '''recive a target and logout of it
         '''
         raise NotImplementedError()
 
     def get_source_iqn(self):
         raise NotImplementedError()
 
-class ISCSIapi(object):
-    '''Class that contain the main iscsi methods for connecting iscsi initiator
-    to an iscsi target
-    '''
-
-    def discover_target(self, ip_adder):
-        '''initiate discovery and returns a list of dicts which contain all availble targets
+    def set_source_iqn(self, iqn):
+        '''recive an iqn as a string, verify it's valid and set it.
+        returns iqn type of the new IQN or None if fails
         '''
         raise NotImplementedError()
 
-    def login_to_target(self, iqn):
-        '''recives an iqn as string and login to it
+    def get_discovered_targets(self):
+        '''return a list of dicvoered target objects
         '''
         raise NotImplementedError()
 
-    def login_to_all_availble_targets(self):
-        raise NotImplementedError()
-
-    def logout_from_target(self, iqn):
-        '''recives an iqn as string and logsout of it
+    def get_sessions(self, target=None):
+        '''recive a target or None and return a list of all available sessions
         '''
         raise NotImplementedError()
 
-    def logout_from_all_targets(self):
-        raise NotImplementedError()
-
-    def get_sessions(self, iqn=None):
-        '''returns a list of dicts which contain all active sessions or only iqn specific active session
-        '''
-        raise NotImplementedError()
-
-    def rescan_all_sessions(self):
+    def rescan(self):
         '''rescan all availble sessions
         '''
         raise NotImplementedError()
 
-    def delete_discovered_sessions(self, iqn=None):
-        '''deletea all discoverd sessions or only iqn specific active sessions
+    def undiscover(self, target=None):
+        '''delete all discoverd sessions or only iqn specific active sessions
         '''
-        raise NotImplementedError()
-
-    def is_iscsi_sw_installed(self):
-        ''' return True if iSCSI initator sw is installed otherwise return False
-        '''
-        raise NotImplementedError()
-
-    def install_iscsi_software_initiator(self):
         raise NotImplementedError()
