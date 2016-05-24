@@ -87,7 +87,7 @@ This could be due to one of the follwoing reasons:
         #             <OS Lun> ...
         args = ['iscsicli', 'LoginTarget', str(target.get_iqn()), 't',\
         endpoint.get_ip_address(), str(endpoint.get_port()), \
-        self._initiator.get_initiator_name(), '*', '0', '2', '*', '0', '1', '0', '0', '*', '*', '0', '0', '0']
+        self._initiator.get_initiator_name(), '*', '0', '2', '*', '0', '*', '0', '0', '*', '*', '0', '0', '0']
         logger.info("running iscsicli LoginTarget {!r}".format(' '.join(args)))
         # TODO: check if session is active if yes then not fail
         # make session with full features ( chap )
