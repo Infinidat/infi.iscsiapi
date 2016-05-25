@@ -74,6 +74,7 @@ This could be due to one of the follwoing reasons:
         '''recives target and endpoing and login to it
         '''
         #TODO limit amount of connections to 32
+        # move the login args to dict ?
         # Due to a bug only in 2008 multipulie sessions isn't hadled ok unless initator name is montioned
         # Therefore we don't use Qlogin, Details:
         # https://social.technet.microsoft.com/Forums/office/en-US/4b2420d6-0f28-4d12-928d-3920896f582d/iscsi-initiator-target-not-reconnecting-on-reboot?forum=winserverfiles
