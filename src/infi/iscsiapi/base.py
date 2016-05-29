@@ -8,6 +8,9 @@ class Session(object):
         self._source_iqn = source_iqn
         self._uid = uid
 
+    def __eq__(self, other):
+        return self._uid == other.get_uid() and self._target_endpoint == other.get_target_endpoint()
+
     def get_hct(self):
         return self._hct
 
@@ -73,6 +76,9 @@ class Endpoint(object):
     def __init__(self, ip_address, port):
         self._ip_address = ip_address
         self._port = port
+
+    def __eq__(self, other):
+        return self._ip_address == other.get_ip_address() and self._port == other.get_port()
 
     def get_ip_address(self):
         return self._ip_address
