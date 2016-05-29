@@ -2,7 +2,7 @@ class Session(object):
     '''class that contains the iscsi session information
     '''
     def __init__(self, target_endpoint, source_ip, source_iqn, uid):
-        #TODO: add hct
+        # TODO: add hct
         self._target_endpoint = target_endpoint
         self._source_ip = source_ip
         self._source_iqn = source_iqn

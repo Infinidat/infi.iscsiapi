@@ -1,7 +1,6 @@
 from infi.win32service import ServiceControlManagerContext
 from infi.execute import execute_assert_success, execute, ExecutionError
 from . import base
-from ctypes import WinError
 from infi.dtypes.iqn import IQN
 from infi.wmi import WmiClient
 
@@ -43,7 +42,7 @@ class WindowsISCSIapi(base.ConnectionManager):
             raise
 
     def _return_target(self, ip_address, outbound_chap, inbound_chap):
-        #TODO return endpoint discovery and not ip
+        # TODO return endpoint discovery and not ip
         endpoints = []
         iqn = None
         for session in self._get_connectivity_using_wmi():
@@ -51,7 +50,7 @@ class WindowsISCSIapi(base.ConnectionManager):
             if session['dst_ip'] == ip_address:
                 iqn = IQN(session['iqn'])
         if iqn is None:
-            raise RuntimeError("iqn is empty, it means that the discovery address {} didn't returned from the target"\
+            raise RuntimeError("iqn is empty, it means that the discovery address {} didn't returned from the target"
                                .format(ip_address))
         return base.Target(endpoints, inbound_chap, outbound_chap, ip_address, iqn)
 
@@ -74,7 +73,7 @@ class WindowsISCSIapi(base.ConnectionManager):
     def login(self, target, endpoint, num_of_connections=1):
         '''receives target and endpoint and login to it
         '''
-        #TODO limit amount of connections to 32
+        # TODO limit amount of connections to 32
         # Due to a bug only in 2008 multiple sessions isn't handled ok unless initiator name is monitored
         # Therefore we don't use Qlogin, Details:
         # https://social.technet.microsoft.com/Forums/office/en-US/4b2420d6-0f28-4d12-928d-3920896f582d/iscsi-initiator-target-not-reconnecting-on-reboot?forum=winserverfiles
@@ -95,7 +94,7 @@ class WindowsISCSIapi(base.ConnectionManager):
         # make session with full features ( chap )
         process = execute(args)
         if int(process.get_returncode()) != 0:
-            logger.info("couldn't login to {!r} {!r} {!r} because: {!r}"\
+            logger.info("couldn't login to {!r} {!r} {!r} because: {!r}"
                         .format(target.get_iqn(), endpoint.get_ip_address(), endpoint.get_port(), process.get_stdout()))
             if "target has already been logged in" not in process.get_stdout():
                 raise RuntimeError(process.get_stdout())
@@ -133,7 +132,6 @@ class WindowsISCSIapi(base.ConnectionManager):
         '''receive an iqn as a string, verify it's valid and set it.
         returns iqn type of the new IQN or None if fails
         '''
-        from infi.dtypes.iqn import InvalidIQN
         logger.info("iqn before the change is {!r} going to change to {!r}".format(self.get_source_iqn(), iqn))
         _ = IQN(iqn) # raise if iqn doesn't exist
         client = WmiClient('root\\wmi')

@@ -1,142 +1,209 @@
-from infi.execute import execute_assert_success, execute, ExecutionError
+from infi.execute import execute_assert_success, execute
 from . import base
+from infi.dtypes.iqn import IQN
 
 from logging import getLogger
 logger = getLogger(__name__)
 
-ISCSI_FS_PATH = '/var/lib/iscsi/nodes'
+ISCSI_CONNECTION_CONFIG = '/var/lib/iscsi/nodes'
+ISCSI_INITIATOR_IQN_FILE = '/etc/iscsi/initiatorname.iscsi'
 
 class LinuxISCSIapi(base.ConnectionManager):
 
-    def _pars_linux_iscsiadm_output(self, output):
+    def _pars_iscsiadm_session_output(self, output):
         '''return list of dicts which contain the parsed iscsiadm output
         '''
         import re
         availble_targets = []
-        #regex = re.compile(r'(?P<dst_ip>^\d+\.\d+\.\d+\.\d+)\:(?P<dst_port>\d+)\,(?P<no_conn>\d+)\ (?P<iqn>.+)')
-        # need to remove starts with ip ^ to support also sessions moved from match to search
         regex = re.compile(r'(?P<dst_ip>\d+\.\d+\.\d+\.\d+)\:(?P<dst_port>\d+)\,(?P<no_conn>\d+)\ (?P<iqn>.+)')
         for session in output.splitlines():
             availble_targets.append(regex.search(session).groupdict())
         return availble_targets
 
-    def _pars_sysfs(self):
+    def _pars_connection_config(self):
         import os
         import re
         availble_targets = []
-        for target in os.listdir(ISCSI_FS_PATH):
+        for target in os.listdir(ISCSI_CONNECTION_CONFIG):
             iqn = target
-            for end_point in os.listdir(ISCSI_FS_PATH + '/' + target):
+            for end_point in os.listdir(ISCSI_CONNECTION_CONFIG + '/' + target):
                 regex = re.compile(r'(?P<dst_ip>\d+\.\d+\.\d+\.\d+)\,(?P<dst_port>\d+)\,(?P<no_conn>\d+)')
                 session = regex.search(end_point).groupdict()
                 session['iqn'] = iqn
                 availble_targets.append(session)
         return availble_targets
 
+    def _pars_discovery_address(self, iqn):
+        '''get an iqn of discovered target and return the discovery ip address
+        '''
+        # add support for multiple discovery address ?
+        import os
+        import re
+        regex = re.compile('node.discovery_address = 'r'(?P<ip>\d+\.\d+\.\d+\.\d+)')
+        # regex = re.compile('node.discovery_address = 'r'\d+\.\d+\.\d+\.\d+')
+        _ = IQN(iqn)  # make sure it's valid iqn
+        single_connection = os.listdir(os.path.join(ISCSI_CONNECTION_CONFIG, iqn))[0]
+        single_path = os.path.join(ISCSI_CONNECTION_CONFIG, iqn, single_connection, 'default')
+        with open(single_path, 'r') as fd:
+            for line in fd:
+                if re.match(regex, line.strip()):
+                    return regex.search(line.strip()).groupdict()['ip']
+
+    def _get_initiator_ip_using_sysfs(self, target_ip_address):
+        ''' receives destination ip address as a string and return the initiator ip address
+        '''
+        import os
+        from glob import glob
+        SYSFS_CONN_BASE_DIR = os.path.join('/sys', 'class', 'scsi_host')
+        for host in os.listdir(SYSFS_CONN_BASE_DIR):
+            try:
+                target_ip_address_file = glob(os.path.join(SYSFS_CONN_BASE_DIR, host, 'device', 'session*',
+                                                      'connection*', 'iscsi_connection', 'connection*', 'address'))
+            except:
+                continue
+            if target_ip_address_file == []:
+                continue
+            target_ip_address_file = target_ip_address_file[0]
+            logger.debug("opening file {} to get target ip address".format(target_ip_address_file))
+            with open(target_ip_address_file, 'r') as fd:
+                if target_ip_address == fd.read().strip():
+                    initiator_ip_address_file = glob(os.path.join('/sys', 'class', 'scsi_host', host, 'device', 'iscsi_host',
+                                                             host, 'ipaddress'))
+                    with open(initiator_ip_address_file[0], 'r') as fd:
+                        initiator_ip_address = fd.read().strip()
+                        return initiator_ip_address
+
+    def _get_sessions_using_sysfs(self):
+        import os
+        import re
+        from glob import glob
+        sessions = []
+        for host in glob(os.path.join('/sys', 'devices', 'platform', 'host*')):
+            session_path = glob(os.path.join(host, 'session*', 'connection*', 'iscsi_connection', 'connection*'))[0]
+            with open(os.path.join(session_path, 'address'), 'r') as fd:
+                ip_address = fd.read().strip()
+            with open(os.path.join(session_path, 'port'), 'r') as fd:
+                port = fd.read().strip()
+            with open(os.path.join(session_path, 'persistent_address')) as fd:
+                source_ip = fd.read().strip()
+            session_id = os.path.basename(glob(os.path.join(host, 'session*'))[0])
+            if re.match('^session', session_id):
+                uid = re.split('^session', session_id)[0]
+            else:
+                raise RuntimeError("couldn't get session id from {!r}".format(session_path))
+            session = base.Session(base.Endpoint(ip_address, port), source_ip, self.get_source_iqn(), uid)
+            sessions.append(session)
+        return sessions
+
+    def _reload_iscsid_service(self):
+        execute_assert_success(['service', 'iscsid', 'restart'])
+
+    def get_discovered_targets(self):
+        iqn_list = []
+        targets = []
+        for connectivity in self._pars_connection_config():
+            iqn_list.append(connectivity['iqn'])
+        uniq_iqn = list(set(iqn_list))
+        for iqn in uniq_iqn:
+            endpoints = []
+            discovery_endpoint = self._pars_discovery_address(iqn)
+            for connectivity in self._pars_connection_config():
+                if connectivity['iqn'] == iqn:
+                    endpoints.append(base.Endpoint(connectivity['dst_ip'], connectivity['dst_port']))
+            targets.append(base.Target(endpoints, None, None, discovery_endpoint, iqn))
+        return targets
+
+    def get_source_iqn(self):
+        '''return infi.dtypes.iqn type iqn if iscsi initiator file exists
+        '''
+        import re
+        from os.path import isfile
+        if isfile(ISCSI_INITIATOR_IQN_FILE):
+            with open(ISCSI_INITIATOR_IQN_FILE, 'r') as fd:
+                data = fd.readlines()
+                assert len(data) == 1, "something isn't right with {}".format(ISCSI_INITIATOR_IQN_FILE)
+                raw_iqn = re.split('InitiatorName=', data[0])
+                return IQN(raw_iqn[1].strip())
+        else:
+            raise
+
+    def set_source_iqn(self, iqn):
+        '''receives a string, validates it's an iqn then set it to the host
+        NOTE: this restart the iscsi service and may fail active sessions !
+        '''
+        import shutil
+        from os.path import isfile
+        _ = IQN(iqn)   # checks iqn is valid
+        _ = self.get_source_iqn()  # check file exist and valid
+        if not isfile(ISCSI_INITIATOR_IQN_FILE + '.orig'):
+            shutil.copy(ISCSI_INITIATOR_IQN_FILE, ISCSI_INITIATOR_IQN_FILE + '.orig')
+        replacement_strig = 'InitiatorName=' + iqn
+        with open(ISCSI_INITIATOR_IQN_FILE, 'w') as fd:
+            fd.write(replacement_strig)
+        logger.info("iqn was replaced to {}".format(iqn))
+        logger.info("reloading iscsi service")
+        self._reload_iscsid_service()
 
     def discover(self, ip_address, port=3260):
         '''initiate discovery and returns a list of dicts which contain all available targets
         '''
         endpoints = []
-        args = ['iscsiadm', '-m', 'discovery', '-t', 'st', '-p', str(ip_address) + ':' + str(port) ]
+        args = ['iscsiadm', '-m', 'discovery', '-t', 'st', '-p', str(ip_address) + ':' + str(port)]
         logger.info("running {}".format(args))
-        process = execute_assert_success(args)
-        for target_connectivity in self._pars_sysfs():
+        execute_assert_success(args)
+        for target_connectivity in self._pars_connection_config():
             if target_connectivity['dst_ip'] == ip_address:
                 iqn = target_connectivity['iqn']
-        for target_connectivity in self._pars_sysfs():
+        for target_connectivity in self._pars_connection_config():
             if iqn == target_connectivity['iqn']:
-                endpoint = base.Endpoint(target_connectivity['dst_ip'], target_connectivity['dst_port'])
-                endpoints.append(endpoint)
+                endpoints.append(base.Endpoint(target_connectivity['dst_ip'], target_connectivity['dst_port']))
         return base.Target(endpoints, None, None, ip_address, iqn)
 
-#    def discover_target(self, ip_addr):
-#        '''initiate discovery and returns a list of dicts which contain all available targets
-#        '''
-#        process = execute_assert_success(['iscsiadm', '-m', 'discovery', '-t', 'st', '-p', ip_addr])
-#        return self._pars_linux_iscsiadm_output(process.get_stdout())
-
     def login(self, target, endpoint, num_of_connections=1):
-        args = ['iscsiadm', '-m', 'node', '-l', '-T', target.get_iqn(), '-p',\
+        args = ['iscsiadm', '-m', 'node', '-l', '-T', target.get_iqn(), '-p',
         endpoint.get_ip_address() + ':' + endpoint.get_port()]
         execute_assert_success(args)
-#       return session
+        for session in self._get_sessions_using_sysfs():
+            if session.get_target_endpoint() == endpoint:
+                return session
 
+    def login_all(self, target):
+        args = ['iscsiadm', '-m', 'node', '-l', '-T', str(target.get_iqn())]
+        execute_assert_success(args)
+        return self.get_sessions(target=target)
 
-    def login_to_target(self, target_iqn, ip=None):
-        '''receives an iqn as string and login to it with ip tries to connect to the target ip
-        '''
-        if not ip:
-            execute_assert_success(['iscsiadm', '-m', 'node', '-l', '-T', target_iqn])
-        else:
-            execute_assert_success(['iscsiadm', '-m', 'node', '-l', '-T', target_iqn, '-p', ip])
-        #iscsiadm --m node  --targetname "iqn.2009-11.com.infinidat:storage:infinibox-sn-30189"  -p 172.16.40.153:3260 --op=update --name node.session.auth.authmethod --value=CHAP
-        #-op=update --name node.session.auth.username --value=
-        #-op=update --name node.session.auth.password --value=
+    def logout(self, target, session):
+        ip_address = session.get_target_endpoint().get_ip_address()
+        execute((['iscsiadm', '-m', 'node', '-u', '-T', str(target.get_iqn()), '-p', ip_address]))
 
-    def login_to_all_availble_targets(self):
-        execute_assert_success(['iscsiadm', '-m', 'node', '-l'])
-
-    def logout_from_target(self, iqn):
-        '''receives an iqn as string and logs out of it
-        '''
-        execute((['iscsiadm', '-m', 'node', '-u', '-T', iqn]))
-
-    def logout_from_all_targets(self):
-        execute((['iscsiadm', '-m', 'node', '-u']))
+    def logout_all(self, target):
+        execute((['iscsiadm', '-m', 'node', '-u', '-T', str(target.get_iqn())]))
 
     def get_sessions(self, target=None):
-        try:
-            if target:
-                process = execute_assert_success(['iscsiadm', '-m', 'session', '-n', target.get_iqn()])
-            else:
-                process = execute_assert_success(['iscsiadm', '-m', 'session'])
-        except ExecutionError as e:
-                logger.error(e)
-                return []
-        return
-    def get_sessions(self, target=None):
-        '''returns a list of dicts which contain all active sessions or only iqn specific active session
+        '''receive a target or None and return a list of all available sessions
         '''
-        # import os
-        # if not os.path.isdir(ISCSI_FS_PATH):
-            # logger.error("storage isn't discoverable from this host when it should be")
-            # return
-        # return os.listdir(ISCSI_FS_PATH)
-        try:
-            if target:
-                process = execute_assert_success(['iscsiadm', '-m', 'session', '-n', target.get_iqn()])
-            else:
-                process = execute_assert_success(['iscsiadm', '-m', 'session'])
-        except ExecutionError as e:
-                logger.error(e)
-                return []
         if target:
-
-        self._pars_linux_iscsiadm_output(process.get_stdout())
+            target_sessions = []
+            for session in self._get_sessions_using_sysfs():
+                if session.get_target_endpoint() in target.get_endpoints():
+                    target_sessions.append(session)
+            return target_sessions
+        else:
+            return self._get_sessions_using_sysfs()
 
     def rescan(self):
         '''rescan all available sessions
         '''
         execute(['iscsiadm', '-m', 'session', '--rescan'])
 
-    def rescan_all_sessions(self):
-        '''rescan all available sessions
+    def undiscover(self, target=None):
+        '''delete all discovered target if target=None otherwise delete only the target
+        discovery endpoints
         '''
-        execute(['iscsiadm', '-m', 'session', '--rescan'])
-
-    def delete_discovered_sessions(self, iqn=None, ip=None):
-        '''with no arguments delete all discover sessions
-        with ip or iqn delete a specific ip session or all sessions to a specific iqn
-        '''
-        if not iqn and not ip:
-            execute(['iscsiadm', '-m', 'node', '-o', 'delete'])
-        elif iqn and not ip:
-            execute(['iscsiadm', '-m', 'node', '-o', 'delete', iqn])
-        elif ip and not iqn:
-            execute(['iscsiadm', '-m', 'node', '-o', 'delete', '-p', ip])
+        if target:
+            execute(['iscsiadm', '-m', 'node', '-o', 'delete', str(target.get_iqn())])
         else:
-            raise AttributeError("function can't receive both ip and iqn.")
+            execute(['iscsiadm', '-m', 'node', '-o', 'delete'])
 
 class LinuxSoftwareInitiator(base.SoftwareInitiator):
     def is_installed(self):
