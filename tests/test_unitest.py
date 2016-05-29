@@ -133,6 +133,7 @@ class ISCSIapi_host_TestCase(TestCase):
         self.assertEqual(len(win_iscsi.get_discovered_targets()), 0 )
         net_space = setup_iscsi_on_infinibox(self.system_sdk)
         target = win_iscsi.discover(net_space.get_field('ips')[0].ip_address)
+        self.assertEqual(len(win_iscsi.get_discovered_targets()), 1 )
         self.assertEqual(type(target), infi.iscsiapi.base.Target )
         self.assertEqual(target.get_discovery_endpoint(),net_space.get_field('ips')[0].ip_address)
         self.assertNotEqual(target.get_iqn(), None )
