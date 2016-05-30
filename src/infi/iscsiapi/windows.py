@@ -133,7 +133,7 @@ class WindowsISCSIapi(base.ConnectionManager):
         returns iqn type of the new IQN or None if fails
         '''
         logger.info("iqn before the change is {!r} going to change to {!r}".format(self.get_source_iqn(), iqn))
-        _ = IQN(iqn) # raise if iqn doesn't exist
+        _ = IQN(iqn)  # raise if iqn doesn't exist
         client = WmiClient('root\\wmi')
         query = list(client.execute_query("SELECT * FROM MSIscsiInitiator_MethodClass"))[0]
         initiator_name = query.Methods_.Item("SetIscsiInitiatorNodeName")
@@ -151,9 +151,9 @@ class WindowsISCSIapi(base.ConnectionManager):
         for target in client.execute_query('SELECT * from  MSIscsiInitiator_TargetClass'):
             iqn = target.Properties_.Item('TargetName').Value
             for portal in target.Properties_.Item('PortalGroups').Value[0].Properties_.Item('Portals').Value:
-                target_connectivity = {'dst_ip':portal.Properties_.Item('Address').Value ,
+                target_connectivity = {'dst_ip':portal.Properties_.Item('Address').Value,
                                        'dst_port': portal.Properties_.Item('Port').Value, 'iqn': iqn}
-                if not target_connectivity in availble_targets_connectivity:
+                if target_connectivity not in availble_targets_connectivity:
                     availble_targets_connectivity.append(target_connectivity)
         return availble_targets_connectivity
 
@@ -170,7 +170,7 @@ class WindowsISCSIapi(base.ConnectionManager):
             iqn = query.Properties_.Item('TargetName').Value
             for portal in query.Properties_.Item('PortalGroups').Value[0].Properties_.Item('Portals').Value:
                 endpoint = base.Endpoint(portal.Properties_.Item('Address').Value, portal.Properties_.Item('Port').Value)
-                if not endpoint in endpoints:
+                if endpoint not in endpoints:
                     endpoints.append(endpoint)
 
             regex = re.compile(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}')
@@ -185,7 +185,7 @@ class WindowsISCSIapi(base.ConnectionManager):
     def get_sessions(self, target=None):
         '''receive a target or None and return a list of all available sessions
         '''
-        #assumes only one connection over each session ( conn_0 ) 3.0 Infinibox limit
+        # assumes only one connection over each session ( conn_0 ) 3.0 Infinibox limit
         self._refresh_wmi_db()
         def _get_sessions_of_target(target):
             client = WmiClient('root\\wmi')
