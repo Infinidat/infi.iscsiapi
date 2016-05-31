@@ -1,4 +1,5 @@
 from infi.vendata.integration_tests import TestCase
+from infi.vendata.integration_tests.iscsi import is_iscsi_nic_availalbe, setup_iscsi_network_interface_on_host
 from mock import patch, MagicMock, mock_open
 from infi.execute import execute_assert_success
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
@@ -17,6 +18,8 @@ class ISCSIapi_host_TestCase(TestCase):
         cls.system = cls.system_factory.allocate_infinidat_system(labels=(['iscsi']))
         cls.system.purge()
         cls.system_sdk = cls.system.get_infinisdk()
+        if not is_iscsi_nic_availalbe():
+            setup_iscsi_network_interface_on_host()
 
     @classmethod
     def tearDownClass(cls):
