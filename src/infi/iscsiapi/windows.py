@@ -58,8 +58,6 @@ class WindowsISCSIapi(base.ConnectionManager):
         '''perform an iscsi discovery to an ip address
         '''
         # TODO: support chap
-        # should I save all the discovery portals ?
-        # right now ( win 2008 ) WMI doesn't support rescan so we are using cli
         self._create_initiator_obj_if_needed()
         already_discoverd = False
         for target in self.get_discovered_targets():
@@ -73,7 +71,6 @@ class WindowsISCSIapi(base.ConnectionManager):
     def login(self, target, endpoint, num_of_connections=1):
         '''receives target and endpoint and login to it
         '''
-        # TODO limit amount of connections to 32
         # Due to a bug only in 2008 multiple sessions isn't handled ok unless initiator name is monitored
         # Therefore we don't use Qlogin, Details:
         # https://social.technet.microsoft.com/Forums/office/en-US/4b2420d6-0f28-4d12-928d-3920896f582d/iscsi-initiator-target-not-reconnecting-on-reboot?forum=winserverfiles
@@ -90,7 +87,7 @@ class WindowsISCSIapi(base.ConnectionManager):
                 self._initiator.get_initiator_name(), '*', '0', '2', '*', '0',
                 '*', '0', '0', '*', '*', '0', '0', '0']
         logger.info("running iscsicli LoginTarget {!r}".format(' '.join(args)))
-        # TODO: check if session is active if yes then not fail
+        # TODO:
         # make session with full features ( chap )
         process = execute(args)
         if int(process.get_returncode()) != 0:
@@ -186,6 +183,7 @@ class WindowsISCSIapi(base.ConnectionManager):
         '''receive a target or None and return a list of all available sessions
         '''
         # assumes only one connection over each session ( conn_0 ) 3.0 Infinibox limit
+        # TODO: when InfiniBox will support MCS need to modify this code
         self._refresh_wmi_db()
         def _get_sessions_of_target(target):
             client = WmiClient('root\\wmi')

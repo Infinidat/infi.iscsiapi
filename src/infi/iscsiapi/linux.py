@@ -36,11 +36,9 @@ class LinuxISCSIapi(base.ConnectionManager):
     def _pars_discovery_address(self, iqn):
         '''get an iqn of discovered target and return the discovery ip address
         '''
-        # add support for multiple discovery address ?
         import os
         import re
         regex = re.compile('node.discovery_address = 'r'(?P<ip>\d+\.\d+\.\d+\.\d+)')
-        # regex = re.compile('node.discovery_address = 'r'\d+\.\d+\.\d+\.\d+')
         _ = IQN(iqn)  # make sure it's valid iqn
         single_connection = os.listdir(os.path.join(ISCSI_CONNECTION_CONFIG, iqn))[0]
         single_path = os.path.join(ISCSI_CONNECTION_CONFIG, iqn, single_connection, 'default')
@@ -79,20 +77,24 @@ class LinuxISCSIapi(base.ConnectionManager):
         from glob import glob
         sessions = []
         for host in glob(os.path.join('/sys', 'devices', 'platform', 'host*')):
-            session_path = glob(os.path.join(host, 'session*', 'connection*', 'iscsi_connection', 'connection*'))[0]
-            with open(os.path.join(session_path, 'address'), 'r') as fd:
-                ip_address = fd.read().strip()
-            with open(os.path.join(session_path, 'port'), 'r') as fd:
-                port = fd.read().strip()
-            with open(os.path.join(session_path, 'persistent_address')) as fd:
-                source_ip = fd.read().strip()
-            session_id = os.path.basename(glob(os.path.join(host, 'session*'))[0])
-            if re.match('^session', session_id):
-                uid = re.split('^session', session_id)[0]
-            else:
-                raise RuntimeError("couldn't get session id from {!r}".format(session_path))
-            session = base.Session(base.Endpoint(ip_address, port), source_ip, self.get_source_iqn(), uid)
-            sessions.append(session)
+            try:
+                session_path = glob(os.path.join(host, 'session*', 'connection*', 'iscsi_connection', 'connection*'))[0]
+                with open(os.path.join(session_path, 'address'), 'r') as fd:
+                    ip_address = fd.read().strip()
+                with open(os.path.join(session_path, 'port'), 'r') as fd:
+                    port = fd.read().strip()
+                with open(os.path.join(session_path, 'persistent_address')) as fd:
+                    source_ip = fd.read().strip()
+                session_id = os.path.basename(glob(os.path.join(host, 'session*'))[0])
+                if re.match('^session', session_id):
+                    uid = re.split('^session', session_id)[0]
+                else:
+                    raise RuntimeError("couldn't get session id from {!r}".format(session_path))
+                session = base.Session(base.Endpoint(ip_address, port), source_ip, self.get_source_iqn(), uid)
+                sessions.append(session)
+            except IOError:
+                logger.debug("this path {!r} isn't connected".format(session_path))
+                continue
         return sessions
 
     def _reload_iscsid_service(self):
