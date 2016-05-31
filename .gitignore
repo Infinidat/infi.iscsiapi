@@ -27,6 +27,7 @@ buildout.in.cfg
 .cache/
 eggs
 eggs/
+data/
 develop-eggs/
 parts
 parts/
