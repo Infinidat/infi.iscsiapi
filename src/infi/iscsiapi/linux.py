@@ -74,11 +74,16 @@ class LinuxISCSIapi(base.ConnectionManager):
     def _get_sessions_using_sysfs(self):
         import os
         import re
+        from infi.os_info import get_platform_string
         from glob import glob
         sessions = []
+        targets = self.get_discovered_targets()
         for host in glob(os.path.join('/sys', 'devices', 'platform', 'host*')):
             try:
-                session_path = glob(os.path.join(host, 'session*', 'connection*', 'iscsi_connection', 'connection*'))[0]
+                if 'centos-5' in get_platform_string() or 'redhat-5' in get_platform_string():
+                    session_path = glob(os.path.join(host, 'session*', 'connection*', 'iscsi_connection*connection*'))[0]
+                else:
+                    session_path = glob(os.path.join(host, 'session*', 'connection*', 'iscsi_connection', 'connection*'))[0]
                 with open(os.path.join(session_path, 'address'), 'r') as fd:
                     ip_address = fd.read().strip()
                 with open(os.path.join(session_path, 'port'), 'r') as fd:
