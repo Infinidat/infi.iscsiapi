@@ -90,8 +90,12 @@ class LinuxISCSIapi(base.ConnectionManager):
                     uid = re.split('^session', session_id)[0]
                 else:
                     raise RuntimeError("couldn't get session id from {!r}".format(session_path))
-                session = base.Session(base.Endpoint(ip_address, port), source_ip, self.get_source_iqn(), uid)
-                sessions.append(session)
+                endpoint = base.Endpoint(ip_address, port)
+                for target in targets:
+                    if endpoint in target.get_endpoints():
+                        session = base.Session(target, endpoint, source_ip, self.get_source_iqn(), uid)
+                        sessions.append(session)
+                        break
             except IOError:
                 logger.debug("this path {!r} isn't connected".format(session_path))
                 continue
@@ -174,9 +178,9 @@ class LinuxISCSIapi(base.ConnectionManager):
         execute_assert_success(args)
         return self.get_sessions(target=target)
 
-    def logout(self, target, session):
+    def logout(self, session):
         ip_address = session.get_target_endpoint().get_ip_address()
-        execute((['iscsiadm', '-m', 'node', '-u', '-T', str(target.get_iqn()), '-p', ip_address]))
+        execute((['iscsiadm', '-m', 'node', '-u', '-T', str(session.get_target().get_iqn()), '-p', ip_address]))
 
     def logout_all(self, target):
         execute((['iscsiadm', '-m', 'node', '-u', '-T', str(target.get_iqn())]))
@@ -199,12 +203,16 @@ class LinuxISCSIapi(base.ConnectionManager):
         execute(['iscsiadm', '-m', 'session', '--rescan'])
 
     def undiscover(self, target=None):
-        '''delete all discovered target if target=None otherwise delete only the target
+        '''logout from everything and delete all discovered target if target=None otherwise delete only the target
         discovery endpoints
         '''
+
         if target:
+            self.logout_all(target)
             execute(['iscsiadm', '-m', 'node', '-o', 'delete', str(target.get_iqn())])
         else:
+            for target in self.get_discovered_targets():
+                self.logout_all(target)
             execute(['iscsiadm', '-m', 'node', '-o', 'delete'])
 
 class LinuxSoftwareInitiator(base.SoftwareInitiator):

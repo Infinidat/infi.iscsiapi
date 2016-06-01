@@ -98,7 +98,7 @@ class WindowsISCSIapi(base.ConnectionManager):
 
         for session in self.get_sessions():
             if session.get_target_endpoint().get_ip_address() == endpoint.get_ip_address():
-                return base.Session(endpoint, session.get_source_ip(), self._initiator.get_iqn(), session.get_uid())
+                return base.Session(target, endpoint, session.get_source_ip(), self._initiator.get_iqn(), session.get_uid())
 
     def login_all(self, target):
         ''' login to all endpoint of a target and return the session it achieved
@@ -197,7 +197,7 @@ class WindowsISCSIapi(base.ConnectionManager):
                 source_iqn = session.Properties_.Item('InitiatorName').Value
                 target_address = conn_0.Properties_.Item('TargetAddress').Value
                 target_port = conn_0.Properties_.Item('TargetPort').Value
-                target_sessions.append(base.Session(base.Endpoint(target_address, target_port), source_ip, source_iqn, uid))
+                target_sessions.append(base.Session(target, base.Endpoint(target_address, target_port), source_ip, source_iqn, uid))
             return target_sessions
         if target:
             return _get_sessions_of_target(target)
@@ -214,14 +214,20 @@ class WindowsISCSIapi(base.ConnectionManager):
         return
 
     def undiscover(self, target=None):
-        '''delete all discovered sessions or only iqn specific active sessions
+        '''logout and delete all discovered sessions for a target or for all targets
         '''
+        if target:
+            self.logout_all(target)
+        else:
+            for target in self.get_discovered_targets():
+                self.logout_all(target)
         for session in self._get_connectivity_using_wmi():
             args = ['iscsicli', 'RemoveTargetPortal', str(session['dst_ip']), str(session['dst_port'])]
             if not target:
                 logger.info("running {}".format(args))
                 execute(args)
             elif target.get_iqn() == session['iqn']:
+                self.logout(session)
                 logger.info("running {}".format(args))
                 execute(args)
         self._refresh_wmi_db()
