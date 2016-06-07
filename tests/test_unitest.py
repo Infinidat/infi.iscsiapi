@@ -18,8 +18,7 @@ class ISCSIapi_host_TestCase(TestCase):
         cls.system = cls.system_factory.allocate_infinidat_system(labels=(['iscsi']))
         cls.system.purge()
         cls.system_sdk = cls.system.get_infinisdk()
-        if not is_iscsi_nic_availalbe():
-            setup_iscsi_network_interface_on_host()
+        setup_iscsi_network_interface_on_host()
 
     @classmethod
     def tearDownClass(cls):

@@ -41,8 +41,7 @@ class WindowsISCSIapi(base.ConnectionManager):
             logger.error(msg.format(ip_address, e, ip_address))
             raise
 
-    def _return_target(self, ip_address, outbound_chap, inbound_chap):
-        # TODO return endpoint discovery and not ip
+    def _return_target(self, ip_address, port, outbound_chap, inbound_chap):
         endpoints = []
         iqn = None
         for session in self._get_connectivity_using_wmi():
@@ -52,7 +51,21 @@ class WindowsISCSIapi(base.ConnectionManager):
         if iqn is None:
             raise RuntimeError("iqn is empty, it means that the discovery address {} didn't returned from the target"
                                .format(ip_address))
-        return base.Target(endpoints, inbound_chap, outbound_chap, ip_address, iqn)
+        return base.Target(endpoints, inbound_chap, outbound_chap, base.Endpoint(ip_address), base.Endpoint(port), iqn)
+
+    def _get_discovery_endpoints(self):
+        '''return all discovery endpoints currently use only for undiscover
+        '''
+        discovery_endpoints = []
+        client = WmiClient('root\\wmi')
+        query = client.execute_query('SELECT * FROM  MSiSCSIInitiator_SendTargetPortalClass')
+        for discovery_endpoint in query:
+            endpoint = base.Endpoint(discovery_endpoint.Properties_.Item('PortalAddress').Value,
+            discovery_endpoint.Properties_.Item('PortalPort').Value)
+            if endpoint not in discovery_endpoints:
+                discovery_endpoints.append(endpoint)
+        return discovery_endpoints
+
 
     def discover(self, ip_address, port=3260, outbound_chap=None, inbound_chap=None):
         '''perform an iscsi discovery to an ip address
@@ -66,7 +79,7 @@ class WindowsISCSIapi(base.ConnectionManager):
                 break
         if not already_discoverd:
             self._execute_discover(ip_address, port)
-        return self._return_target(ip_address, outbound_chap, inbound_chap)
+        return self._return_target(ip_address, port, outbound_chap, inbound_chap)
 
     def login(self, target, endpoint, num_of_connections=1):
         '''receives target and endpoint and login to it
@@ -119,7 +132,6 @@ class WindowsISCSIapi(base.ConnectionManager):
             self.logout(session)
 
     def get_source_iqn(self):
-
         client = WmiClient('root\\wmi')
         query = client.execute_query('SELECT * FROM MSIscsiInitiator_MethodClass')
         iqn = list(query)[0].Properties_.Item("ISCSINodeName").Value
@@ -162,7 +174,7 @@ class WindowsISCSIapi(base.ConnectionManager):
         import re
         discovered_targets = []
         client = WmiClient('root\\wmi')
-        for query in client.execute_query('SELECT * from  MSIscsiInitiator_TargetClass'):
+        for query in client.execute_query('SELECT * from MSIscsiInitiator_TargetClass'):
             endpoints = []
             iqn = query.Properties_.Item('TargetName').Value
             for portal in query.Properties_.Item('PortalGroups').Value[0].Properties_.Item('Portals').Value:
@@ -170,11 +182,13 @@ class WindowsISCSIapi(base.ConnectionManager):
                 if endpoint not in endpoints:
                     endpoints.append(endpoint)
 
-            regex = re.compile(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}')
-            discovery_endpoint = re.findall(regex, query.Properties_.Item('DiscoveryMechanism').Value)
+            regex = re.compile(r'(?P<ip>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\ (?P<port>\d+)')
+            discovery_endpoint = regex.search(query.Properties_.Item('DiscoveryMechanism').Value).groupdict()
             if discovery_endpoint == []:
                 raise RuntimeError("couldn't find an expected wmi object")
-            target = base.Target(endpoints, None, None, discovery_endpoint[0], iqn)
+            discovery_endpoint['port'] = int(str(discovery_endpoint['port']), base=10)
+            target = base.Target(endpoints, None, None,
+                                 base.Endpoint(discovery_endpoint['ip'], str(discovery_endpoint['port'])), iqn)
             if target not in discovered_targets:
                 discovered_targets.append(target)
         return discovered_targets
@@ -218,16 +232,16 @@ class WindowsISCSIapi(base.ConnectionManager):
         '''
         if target:
             self.logout_all(target)
+            for endpoint in self._get_discovery_endpoints():
+                if endpoint in target.get_endpoints():
+                    args = ['iscsicli', 'RemoveTargetPortal', str(endpoint.get_ip_address()), str(endpoint.get_port())]
+                    logger.info("running {}".format(args))
+                    execute(args)
         else:
             for target in self.get_discovered_targets():
                 self.logout_all(target)
-        for session in self._get_connectivity_using_wmi():
-            args = ['iscsicli', 'RemoveTargetPortal', str(session['dst_ip']), str(session['dst_port'])]
-            if not target:
-                logger.info("running {}".format(args))
-                execute(args)
-            elif target.get_iqn() == session['iqn']:
-                self.logout(session)
+            for endpoint in self._get_discovery_endpoints():
+                args = ['iscsicli', 'RemoveTargetPortal', str(endpoint.get_ip_address()), str(endpoint.get_port())]
                 logger.info("running {}".format(args))
                 execute(args)
         self._refresh_wmi_db()
