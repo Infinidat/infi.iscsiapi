@@ -8,11 +8,26 @@ from logging import getLogger
 logger = getLogger(__name__)
 
 
-class WindowsISCSIapi(base.ConnectionManager):
+ISCSI_LOGIN_FLAG_REQUIRE_IPSEC = 1
+ISCSI_LOGIN_FLAG_MULTIPATH_ENABLED = 2
+ISCSI_NO_AUTH_TYPE = 0
+ISCSI_CHAP_AUTH_TYPE = 1
+ISCSI_MUTUAL_CHAP_AUTH_TYPE = 2
+ISCSI_SECURITY_TUNNEL_MODE_PREFERRED = 0x00000040
+ISCSI_SECURITY_TRANSPORT_MODE_PREFERRED = 0X00000020
+ISCSI_SECURITY_PFS = 0x00000010
+ISCSI_SECURITY_NEGOTIATE_VIA_AGGRESSIVE_MODE = 0x00000008
+ISCSI_SECURITY_NEGOTIATE_VIA_MAIN_MODE = 0x00000004
+ISCSI_SECURITY_IPSEC_ENABLED =0x00000002
+ISCSI_SECURITY_VALID_FLAGS = 1
 
-    def __init__(self, *args, **kwargs):
-        super(WindowsISCSIapi, self).__init__(*args, **kwargs)
+
+class WindowsISCSIapi(base.ConnectionManager):
+    def __init__(self):
+        super(WindowsISCSIapi, self).__init__()
         self._initiator = None
+        self._login_flags = ISCSI_LOGIN_FLAG_MULTIPATH_ENABLED
+        self._security_flags = 0
 
     def _create_initiator_obj_if_needed(self):
         if not self._initiator:
@@ -85,34 +100,71 @@ class WindowsISCSIapi(base.ConnectionManager):
     def login(self, target, endpoint, num_of_connections=1):
         '''receives target and endpoint and login to it
         '''
+        # LoginTarget is not persistent across reboots
+        # LoginPersistentTarget will make sure we connect after reboot but not immediately
+        # so we need to call both
+        self._iscsicli_login('LoginTarget', target, endpoint, num_of_connections)
+        self._iscsicli_login('LoginPersistentTarget', target, endpoint, num_of_connections)
+        for session in self.get_sessions():
+            if session.get_target_endpoint() == endpoint:
+                return session
+
+    def _iscsicli_login(self, login_command, target, endpoint, num_of_connections=1):
         # Due to a bug only in 2008 multiple sessions isn't handled ok unless initiator name is monitored
         # Therefore we don't use Qlogin, Details:
         # https://social.technet.microsoft.com/Forums/office/en-US/4b2420d6-0f28-4d12-928d-3920896f582d/iscsi-initiator-target-not-reconnecting-on-reboot?forum=winserverfiles
+        # http://download.microsoft.com/download/a/e/9/ae91dea1-66d9-417c-ade4-92d824b871af/uguide.doc
+
         # iscsicli LoginTarget <TargetName> <ReportToPNP>
-        #              <TargetPortalAddress> <TargetPortalSocket>
-        #              <InitiatorInstance> <Port number> <Security Flags>
-        #             <Login Flags> <Header Digest> <Data Digest>
-        #             <Max Connections> <DefaultTime2Wait>
-        #             <DefaultTime2Retain> <Username> <Password> <AuthType> <Key>
-        #             <Mapping Count> <Target Lun> <OS Bus> <Os Target>
-        #             <OS Lun> ...
-        args = ['iscsicli', 'LoginTarget', str(target.get_iqn()), 't',
-                endpoint.get_ip_address(), str(endpoint.get_port()),
-                self._initiator.get_initiator_name(), '*', '0', '2', '*', '0',
-                '*', '0', '0', '*', '*', '0', '0', '0']
-        logger.info("running iscsicli LoginTarget {!r}".format(' '.join(args)))
-        # TODO:
-        # make session with full features ( chap )
-        process = execute(args)
+        #                      <TargetPortalAddress> <TargetPortalSocket>
+        #                      <InitiatorInstance> <Port number> <Security Flags>
+        #                     <Login Flags> <Header Digest> <Data Digest>
+        #                     <Max Connections> <DefaultTime2Wait>
+        #                     <DefaultTime2Retain> <Username> <Password> <AuthType> <Key>
+        #                     <Mapping Count> <Target Lun> <OS Bus> <Os Target>
+        #                     <OS Lun> ...
+
+        # iscsicli PersistentLoginTarget <TargetName> <ReportToPNP>
+        #                      <TargetPortalAddress> <TargetPortalSocket>
+        #                     <InitiatorInstance> <Port number> <Security Flags>
+        #                     <Login Flags> <Header Digest> <Data Digest>
+        #                     <Max Connections> <DefaultTime2Wait>
+        #                     <DefaultTime2Retain> <Username> <Password> <AuthType> <Key>
+        #                     <Mapping Count> <Target Lun> <OS Bus> <Os Target>
+        #                     <OS Lun> ...
+        command = '''iscsicli {0} {TargetName} {ReportToPNP}
+                {TargetPortalAddress} {TargetPortalSocket}
+                {InitiatorInstance} {Port_number} {Security_Flags}
+                {Login_Flags} {Header_Digest} {Data_Digest}
+                {Max_Connections} {DefaultTime2Wait}
+                {DefaultTime2Retain} {Username} {Password} {AuthType} {Key}
+                {Mapping_Count}'''
+
+        args = command.format(login_command, TargetName=target.get_iqn(),
+                              ReportToPNP='t', # If the value is T or t then the LUN is exposed as a device
+                              TargetPortalAddress=endpoint.get_ip_address(),
+                              TargetPortalSocket=endpoint.get_port(),
+                              InitiatorInstance=self._initiator.get_initiator_name(),
+                              Port_number='*', # the kernel mode initiator driver chooses the initiator port used
+                              Security_Flags=self._security_flags,
+                              Login_Flags=self._login_flags,
+                              Header_Digest='*', # the digest setting is determined by the initiator kernel mode driver
+                              Data_Digest=0,
+                              Max_Connections='*', # the kernel mode initiator driver chooses the value for maximum connections
+                              DefaultTime2Wait=0,
+                              DefaultTime2Retain=0,
+                              Username='*', # the iSCSI initiator service will use the initiator node name as the CHAP username
+                              Password='*', # The initiator will use this secret to compute a hash value based on the challenge sent by the target
+                              AuthType=ISCSI_NO_AUTH_TYPE, # TODO add chap support
+                              Key=0,
+                              Mapping_Count=0)
+        logger.info("running iscsicli LoginTarget {!r}".format(args))
+        process = execute(args.split())
         if int(process.get_returncode()) != 0:
             logger.info("couldn't login to {!r} {!r} {!r} because: {!r}"
                         .format(target.get_iqn(), endpoint.get_ip_address(), endpoint.get_port(), process.get_stdout()))
             if "target has already been logged in" not in process.get_stdout():
                 raise RuntimeError(process.get_stdout())
-
-        for session in self.get_sessions():
-            if session.get_target_endpoint() == endpoint:
-                return session
 
     def login_all(self, target):
         ''' login to all endpoint of a target and return the session it achieved
