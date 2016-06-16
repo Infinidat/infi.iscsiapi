@@ -111,8 +111,8 @@ class WindowsISCSIapi(base.ConnectionManager):
                 raise RuntimeError(process.get_stdout())
 
         for session in self.get_sessions():
-            if session.get_target_endpoint().get_ip_address() == endpoint.get_ip_address():
-                return base.Session(target, endpoint, session.get_source_ip(), self._initiator.get_iqn(), session.get_uid())
+            if session.get_target_endpoint() == endpoint:
+                return session
 
     def login_all(self, target):
         ''' login to all endpoint of a target and return the session it achieved
