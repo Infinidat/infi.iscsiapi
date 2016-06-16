@@ -198,6 +198,7 @@ class WindowsISCSIapi(base.ConnectionManager):
         '''
         # assumes only one connection over each session ( conn_0 ) 3.0 Infinibox limit
         # TODO: when InfiniBox will support MCS need to modify this code
+        from infi.dtypes.hctl import HCT
         self._refresh_wmi_db()
         def _get_sessions_of_target(target):
             client = WmiClient('root\\wmi')
@@ -205,13 +206,20 @@ class WindowsISCSIapi(base.ConnectionManager):
             query = client.execute_query(wql)
             target_sessions = []
             for session in query:
+                hct = None
                 uid = session.Properties_.Item('SessionId').Value
                 conn_0 = list(session.Properties_.Item('ConnectionInformation').Value)[0]
                 source_ip = conn_0.Properties_.Item('InitiatorAddress').Value
                 source_iqn = session.Properties_.Item('InitiatorName').Value
                 target_address = conn_0.Properties_.Item('TargetAddress').Value
                 target_port = conn_0.Properties_.Item('TargetPort').Value
-                target_sessions.append(base.Session(target, base.Endpoint(target_address, target_port), source_ip, source_iqn, uid))
+
+                devices = list(session.Properties_.Item('Devices').Value)
+                if devices:
+                    hct = HCT(devices[0].Properties_.Item('ScsiPortNumber').Value,
+                              devices[0].Properties_.Item('ScsiPathId').Value,
+                              devices[0].Properties_.Item('ScsiTargetId').Value)
+                target_sessions.append(base.Session(target, base.Endpoint(target_address, target_port), source_ip, source_iqn, uid, hct))
             return target_sessions
         if target:
             return _get_sessions_of_target(target)

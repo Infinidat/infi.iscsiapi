@@ -75,6 +75,7 @@ class LinuxISCSIapi(base.ConnectionManager):
         import os
         import re
         from infi.os_info import get_platform_string
+        from infi.dtypes.hctl import HCT
         from glob import glob
         sessions = []
         targets = self.get_discovered_targets()
@@ -95,10 +96,14 @@ class LinuxISCSIapi(base.ConnectionManager):
                     uid = re.split('^session', session_id)[0]
                 else:
                     raise RuntimeError("couldn't get session id from {!r}".format(session_path))
+                target_id = os.path.basename(glob(os.path.join(host, 'session*', 'target*'))[0])
+                if re.match('^target', target_id):
+                    hct_tuple = re.split('^target', target_id)[1].split(':')
+                    hct = HCT(*hct_tuple)
                 endpoint = base.Endpoint(ip_address, port)
                 for target in targets:
                     if endpoint in target.get_endpoints():
-                        session = base.Session(target, endpoint, source_ip, self.get_source_iqn(), uid)
+                        session = base.Session(target, endpoint, source_ip, self.get_source_iqn(), uid, hct)
                         sessions.append(session)
                         break
             except IOError:

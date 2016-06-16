@@ -1,13 +1,14 @@
 class Session(object):
     '''class that contains the iscsi session information
     '''
-    def __init__(self, target, target_endpoint, source_ip, source_iqn, uid):
+    def __init__(self, target, target_endpoint, source_ip, source_iqn, uid, hct):
         # TODO: add hct
         self._target = target
         self._target_endpoint = target_endpoint
         self._source_ip = source_ip
         self._source_iqn = source_iqn
         self._uid = uid
+        self._hct = hct
 
     def __eq__(self, other):
         return self._uid == other.get_uid() and self._target_endpoint == other.get_target_endpoint()
@@ -29,6 +30,9 @@ class Session(object):
 
     def get_source_iqn(self):
         return self._source_iqn
+
+    def get_hct(self):
+        return self._hct
 
 
 class Target(object):
