@@ -59,7 +59,7 @@ class ISCSIapi_host_TestCase(TestCase):
         target = iscsi.discover(net_space.get_field('ips')[0].ip_address)
         self.assertEqual(len(iscsi.get_discovered_targets()), 1 )
         self.assertEqual(type(target), infi.iscsiapi.base.Target )
-        self.assertEqual(target.get_discovery_endpoint(),net_space.get_field('ips')[0].ip_address)
+        self.assertEqual(target.get_discovery_endpoint().get_ip_address(),net_space.get_field('ips')[0].ip_address)
         self.assertNotEqual(target.get_iqn(), None )
         self.assertEqual(iscsi.get_discovered_targets()[0].get_iqn(), target.get_iqn())
         iscsi.undiscover(target)
