@@ -177,7 +177,7 @@ class LinuxISCSIapi(base.ConnectionManager):
         for target_connectivity in self._pars_connection_config():
             if iqn == target_connectivity['iqn']:
                 endpoints.append(base.Endpoint(target_connectivity['dst_ip'], target_connectivity['dst_port']))
-        return base.Target(endpoints, None, None, ip_address, iqn)
+        return base.Target(endpoints, None, None, base.Endpoint(ip_address, port), iqn)
 
     def login(self, target, endpoint, num_of_connections=1):
         args = ['iscsiadm', '-m', 'node', '-l', '-T', target.get_iqn(), '-p',
