@@ -21,7 +21,7 @@ def get_iscsi_software_initator():
 def _get_platform_specific_iscsiapi():
     from infi.os_info import get_platform_string
     platform = get_platform_string()
-    if get_platform_string.startswith('windows'):
+    if platform.startswith('windows'):
         from . import windows
         return windows.WindowsISCSIapi()
     elif platform.startswith('linux'):
@@ -34,7 +34,7 @@ def _get_platform_specific_iscsiapi():
 def _get_platform_specific_iscsi_software_initiator():
     from infi.os_info import get_platform_string
     platform = get_platform_string()
-    if get_platform_string.startswith('windows'):
+    if platform.startswith('windows'):
         from . import windows
         return windows.MicrosoftSoftwareInitiator()
     elif platform.startswith('linux'):
