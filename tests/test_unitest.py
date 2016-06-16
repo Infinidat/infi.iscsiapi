@@ -1,5 +1,5 @@
 from infi.vendata.integration_tests import TestCase
-from infi.vendata.integration_tests.iscsi import is_iscsi_nic_availalbe, setup_iscsi_network_interface_on_host
+from infi.vendata.integration_tests.iscsi import is_iscsi_nic_available, setup_iscsi_network_interface_on_host
 from mock import patch, MagicMock, mock_open
 from infi.execute import execute_assert_success
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
