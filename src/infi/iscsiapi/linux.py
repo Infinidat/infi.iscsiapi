@@ -24,6 +24,10 @@ class LinuxISCSIapi(base.ConnectionManager):
         import os
         import re
         availble_targets = []
+        if not os.path.exists(ISCSI_CONNECTION_CONFIG):
+            return availble_targets
+        if not os.path.isdir(ISCSI_CONNECTION_CONFIG):
+            return availble_targets
         for target in os.listdir(ISCSI_CONNECTION_CONFIG):
             iqn = target
             for end_point in os.listdir(ISCSI_CONNECTION_CONFIG + '/' + target):
