@@ -27,8 +27,8 @@ class WindowsISCSIapi(base.ConnectionManager):
 
     def _refresh_wmi_db(self):
         client = WmiClient('root\\wmi')
-        query = list(client.execute_query("SELECT * FROM MSIscsiInitiator_MethodClass"))[0]
-        query.ExecMethod_('RefreshTargetList', None)
+        for item in client.execute_query("SELECT * FROM MSIscsiInitiator_MethodClass"):
+            item.ExecMethod_('RefreshTargetList', None)
 
     def _execute_discover(self, ip_address, port):
         try:
