@@ -11,7 +11,7 @@ class Session(object):
         self._hct = hct
 
     def __eq__(self, other):
-        return self._uid == other.get_uid() and self._target_endpoint == other.get_target_endpoint()
+        return isinstance(other, Session) and self._uid == other.get_uid() and self._target_endpoint == other.get_target_endpoint()
 
     def get_target(self):
         return self._target
@@ -46,7 +46,7 @@ class Target(object):
         self._iqn = iqn
 
     def __eq__(self, other):
-        return self._iqn == other.get_iqn()
+        return isinstance(other, Target) and self._iqn == other.get_iqn()
 
     def get_endpoints(self):
         return self._endpoints
@@ -86,7 +86,7 @@ class Endpoint(object):
         self._port = port
 
     def __eq__(self, other):
-        return self._ip_address == other.get_ip_address() and self._port == other.get_port()
+        return isinstance(other, Endpoint) and self._ip_address == other.get_ip_address() and self._port == other.get_port()
 
     def get_ip_address(self):
         return self._ip_address
