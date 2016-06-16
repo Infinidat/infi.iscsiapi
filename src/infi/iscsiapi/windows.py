@@ -29,6 +29,12 @@ class WindowsISCSIapi(base.ConnectionManager):
         self._login_flags = ISCSI_LOGIN_FLAG_MULTIPATH_ENABLED
         self._security_flags = 0
 
+    def disable_mpio(self):
+        self._login_flags ^= ISCSI_LOGIN_FLAG_MULTIPATH_ENABLED
+
+    def enable_mpio(self):
+        self._login_flags &= ISCSI_LOGIN_FLAG_MULTIPATH_ENABLED
+
     def _create_initiator_obj_if_needed(self):
         if not self._initiator:
             iscsi_software = MicrosoftSoftwareInitiator()
