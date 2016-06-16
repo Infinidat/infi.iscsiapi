@@ -73,7 +73,7 @@ class WindowsISCSIapi(base.ConnectionManager):
         # TODO: support chap
         self._create_initiator_obj_if_needed()
         already_discoverd = False
-        discovery_endpoint = base.Target(ip_address, port)
+        discovery_endpoint = base.Endpoint(ip_address, port)
         for target in self.get_discovered_targets():
             if target.get_discovery_endpoint() == discovery_endpoint:
                 already_discoverd = True
