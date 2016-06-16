@@ -93,7 +93,7 @@ class LinuxISCSIapi(base.ConnectionManager):
                     source_ip = fd.read().strip()
                 session_id = os.path.basename(glob(os.path.join(host, 'session*'))[0])
                 if re.match('^session', session_id):
-                    uid = re.split('^session', session_id)[0]
+                    uid = re.split('^session', session_id)[1]
                 else:
                     raise RuntimeError("couldn't get session id from {!r}".format(session_path))
                 target_id = os.path.basename(glob(os.path.join(host, 'session*', 'target*'))[0])

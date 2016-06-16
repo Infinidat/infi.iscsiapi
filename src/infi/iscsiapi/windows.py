@@ -51,7 +51,7 @@ class WindowsISCSIapi(base.ConnectionManager):
         if iqn is None:
             raise RuntimeError("iqn is empty, it means that the discovery address {} didn't returned from the target"
                                .format(ip_address))
-        return base.Target(endpoints, inbound_chap, outbound_chap, base.Endpoint(ip_address), base.Endpoint(port), iqn)
+        return base.Target(endpoints, inbound_chap, outbound_chap, base.Endpoint(ip_address, port), iqn)
 
     def _get_discovery_endpoints(self):
         '''return all discovery endpoints currently use only for undiscover
@@ -73,8 +73,9 @@ class WindowsISCSIapi(base.ConnectionManager):
         # TODO: support chap
         self._create_initiator_obj_if_needed()
         already_discoverd = False
+        discovery_endpoint = base.Target(ip_address, port)
         for target in self.get_discovered_targets():
-            if target.get_discovery_endpoint() == ip_address:
+            if target.get_discovery_endpoint() == discovery_endpoint:
                 already_discoverd = True
                 break
         if not already_discoverd:
