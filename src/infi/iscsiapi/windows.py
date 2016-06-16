@@ -313,14 +313,14 @@ class WindowsISCSIapi(base.ConnectionManager):
                 execute(args)
         self._refresh_wmi_db()
 
-class MicrosoftSoftwareInitiator(base.SoftwareInitiator):
 
+class MicrosoftSoftwareInitiator(base.SoftwareInitiator):
     def is_installed(self):
         '''in windows return True if iSCSI initiator sw is running otherwise return False
         '''
         with ServiceControlManagerContext() as scm:
             with scm.open_service('MSiSCSI') as service:
-                return service.is_running()
+                return service.is_running() # TODO and starts on boot
 
     def install(self):
         '''start the iSCSI service on windows.
@@ -332,6 +332,7 @@ class MicrosoftSoftwareInitiator(base.SoftwareInitiator):
                 logger.debug("starting service MSiSCSI")
                 service.safe_start()
                 service.wait_on_pending()
+                # TODO make sure that the service is configured to auto-start
 
     def uninstall(self):
         '''Stop the iscsi service on windows
@@ -341,3 +342,4 @@ class MicrosoftSoftwareInitiator(base.SoftwareInitiator):
                 logger.debug("stopping MSiSCSI")
                 service.safe_stop()
                 service.wait_on_pending()
+                # TODO make sure that the service is disabled on boot
