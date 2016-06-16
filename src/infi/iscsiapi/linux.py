@@ -126,7 +126,7 @@ class LinuxISCSIapi(base.ConnectionManager):
         uniq_iqn = list(set(iqn_list))
         for iqn in uniq_iqn:
             endpoints = []
-            discovery_endpoint = self._pars_discovery_address(iqn)
+            discovery_endpoint = base.Endpoint(self._pars_discovery_address(iqn), 3260) # TODO parse point
             for connectivity in self._pars_connection_config():
                 if connectivity['iqn'] == iqn:
                     endpoints.append(base.Endpoint(connectivity['dst_ip'], connectivity['dst_port']))
