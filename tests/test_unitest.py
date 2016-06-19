@@ -15,6 +15,7 @@ class ISCSIapi_host_TestCase(TestCase):
 
     @classmethod
     def setUpClass(cls):
+        cls.skip_if_not_available()
         cls.system = cls.system_factory.allocate_infinidat_system(labels=(['iscsi']))
         cls.system.purge()
         cls.system_sdk = cls.system.get_infinisdk()
@@ -29,6 +30,13 @@ class ISCSIapi_host_TestCase(TestCase):
             pass
         cls.system.purge()
         cls.system.release()
+
+    @classmethod
+    def skip_if_not_available(cls):
+        try:
+            infi.iscsiapi.get_iscsiapi()
+        except ImportError:
+            raise SkipTest("not available on this platform")
 
     def test_01_iscsi_software(self):
         iscsi_sw = infi.iscsiapi.get_iscsi_software_initator()
