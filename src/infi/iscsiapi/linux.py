@@ -87,7 +87,7 @@ class LinuxISCSIapi(base.ConnectionManager):
             if 'centos-5' in get_platform_string() or 'redhat-5' in get_platform_string():
                 sessions = glob(os.path.join(host, 'session*', 'connection*', 'iscsi_connection*connection*'))
             else:
-                sessions = glob(os.path.join(host, 'session*', 'connection*', 'iscsi_connection', 'connection*'))[0]
+                sessions = glob(os.path.join(host, 'session*', 'connection*', 'iscsi_connection', 'connection*'))
             for session_path in sessions:
                 try:
                     with open(os.path.join(session_path, 'address'), 'r') as fd:
