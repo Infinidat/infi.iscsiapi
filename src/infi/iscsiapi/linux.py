@@ -103,7 +103,7 @@ class LinuxISCSIapi(base.ConnectionManager):
                 target_id = os.path.basename(glob(os.path.join(host, 'session*', 'target*'))[0])
                 if re.match('^target', target_id):
                     hct_tuple = re.split('^target', target_id)[1].split(':')
-                    hct = HCT(*hct_tuple)
+                    hct = HCT(*(int(i) for i in hct_tuple))
                 endpoint = base.Endpoint(ip_address, port)
                 for target in targets:
                     if endpoint in target.get_endpoints():
