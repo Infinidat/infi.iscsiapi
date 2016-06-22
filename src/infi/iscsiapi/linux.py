@@ -1,6 +1,7 @@
 from infi.execute import execute_assert_success, execute
 from . import base
 from infi.dtypes.iqn import IQN
+import infi.pkgmgr
 
 from logging import getLogger
 logger = getLogger(__name__)
@@ -236,21 +237,27 @@ class LinuxSoftwareInitiator(base.SoftwareInitiator):
         '''
         from infi.os_info import get_platform_string
         if 'centos' in get_platform_string() or 'redhat' in get_platform_string():
-            logger.debug("checking if iSCSI sw is installed")
-            process = execute(['rpm', '-q', '--quiet', 'iscsi-initiator-utils'])
-        if process.get_returncode() != 0:
-            logger.debug("iscsi sw isn't installed")
-            return False
-        else:
-            logger.debug("iscsi sw installed")
-            return True
+            pkgmgr = infi.pkgmgr.get_package_manager()
+            return pkgmgr.is_package_installed('iscsi-initiator-utils')
+        if 'ubuntu' in get_platform_string() or 'suse' in get_platform_string():
+            pkgmgr = infi.pkgmgr.get_package_manager()
+            return pkgmgr.is_package_installed('open-iscsi')
 
     def install(self):
         from infi.os_info import get_platform_string
         if 'centos' in get_platform_string() or 'redhat' in get_platform_string():
-            execute_assert_success(['yum', 'install', '-y', 'iscsi-initiator-utils'])
+            pkgmgr = infi.pkgmgr.get_package_manager()
+            pkgmgr.install_package('iscsi-initiator-utils')
+        if 'ubuntu' in get_platform_string() or 'suse' in get_platform_string():
+            pkgmgr = infi.pkgmgr.get_package_manager()
+            pkgmgr.install_package('open-iscsi')
 
     def uninstall(self):
         from infi.os_info import get_platform_string
         if 'centos' in get_platform_string() or 'redhat' in get_platform_string():
+            pkgmgr = infi.pkgmgr.get_package_manager()
+            pkgmgr.remove_package('iscsi-initiator-utils')
             execute(['yum', 'erase', '-y', 'iscsi-initiator-utils'])
+        if 'ubuntu' in get_platform_string() or 'suse' in get_platform_string():
+            pkgmgr = infi.pkgmgr.get_package_manager()
+            pkgmgr.remove_package('open-iscsi')
