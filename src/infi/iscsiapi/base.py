@@ -16,9 +16,6 @@ class Session(object):
     def get_target(self):
         return self._target
 
-    def get_hct(self):
-        return self._hct
-
     def get_uid(self):
         return self._uid
 
