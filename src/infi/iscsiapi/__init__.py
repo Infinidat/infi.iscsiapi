@@ -1,5 +1,3 @@
-import os
-
 __iscsiapi = None
 __iscsi_software_initiator = None
 
