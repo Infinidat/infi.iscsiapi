@@ -7,7 +7,7 @@ import infi.pkgmgr
 from logging import getLogger
 logger = getLogger(__name__)
 
-if 'ubuntu' in get_platform_string():
+if 'ubuntu' in get_platform_string() or 'suse' in get_platform_string():
     ISCSI_CONNECTION_CONFIG = '/etc/iscsi/nodes'
 else:
     ISCSI_CONNECTION_CONFIG = '/var/lib/iscsi/nodes'
@@ -266,12 +266,13 @@ class LinuxSoftwareInitiator(base.SoftwareInitiator):
         if 'ubuntu' in get_platform_string() or 'suse' in get_platform_string():
             pkgmgr = infi.pkgmgr.get_package_manager()
             pkgmgr.install_package('open-iscsi')
+            if 'suse-12' in get_platform_string():
+                execute(['service', 'iscsid', 'start'])
 
     def uninstall(self):
         if 'centos' in get_platform_string() or 'redhat' in get_platform_string():
             pkgmgr = infi.pkgmgr.get_package_manager()
             pkgmgr.remove_package('iscsi-initiator-utils')
-            execute(['yum', 'erase', '-y', 'iscsi-initiator-utils'])
         if 'ubuntu' in get_platform_string() or 'suse' in get_platform_string():
             pkgmgr = infi.pkgmgr.get_package_manager()
             pkgmgr.remove_package('open-iscsi')
