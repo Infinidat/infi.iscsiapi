@@ -40,10 +40,9 @@ class ISCSIapi_host_TestCase(TestCase):
 
     def test_01_iscsi_software(self):
         iscsi_sw = infi.iscsiapi.get_iscsi_software_initator()
-        if iscsi_sw.is_installed():
-            iscsi_sw.uninstall()
+        if not iscsi_sw.is_installed():
             iscsi_sw.install()
-        else:
+            iscsi_sw.uninstall()
             iscsi_sw.install()
         self.assertNotEqual(iscsi_sw.is_installed, True)
 
