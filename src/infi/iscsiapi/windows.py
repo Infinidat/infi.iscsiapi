@@ -330,9 +330,9 @@ class MicrosoftSoftwareInitiator(base.SoftwareInitiator):
         with ServiceControlManagerContext() as scm:
             with scm.open_service('MSiSCSI') as service:
                 logger.debug("starting service MSiSCSI")
+                service.start_automatically()
                 service.safe_start()
                 service.wait_on_pending()
-                service.start_automatically()
 
     def uninstall(self):
         '''Stop the iscsi service on windows
