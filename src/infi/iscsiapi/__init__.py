@@ -9,7 +9,7 @@ def get_iscsiapi():
     return __iscsiapi
 
 
-def get_iscsi_software_initator():
+def get_iscsi_software_initiator():
     global __iscsi_software_initiator
     if __iscsi_software_initiator is None:
         __iscsi_software_initiator = _get_platform_specific_iscsi_software_initiator()
