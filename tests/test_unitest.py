@@ -39,7 +39,7 @@ class ISCSIapi_host_TestCase(TestCase):
             raise SkipTest("not available on this platform")
 
     def test_01_iscsi_software(self):
-        iscsi_sw = infi.iscsiapi.get_iscsi_software_initator()
+        iscsi_sw = infi.iscsiapi.get_iscsi_software_initiator()
         if not iscsi_sw.is_installed():
             iscsi_sw.install()
             iscsi_sw.uninstall()
