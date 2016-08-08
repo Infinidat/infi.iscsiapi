@@ -1,7 +1,7 @@
 Overview
 ========
 This package provides a cross-platform API for working with iSCSI storage systems.
-Currently supported operating systems are Linux (Ubuntu, Redhat, SuSE) and Windows. Support for Solaris and AIX is underway.
+Currently supported operating systems are Linux (Ubuntu, Redhat, SUSE) and Windows. Support for Solaris and AIX is underway.
 
 Usage
 =====
@@ -22,7 +22,7 @@ if not software_initiator.is_installed():
 ```
 
 ### Get or set the source IQN of the software initiator on the host
-The operating system generates an IQN address fo the software initiator (for example: iqn.1994-05.com.redhat:d6677488767)
+The operating system generates an IQN address for the software initiator (for example: iqn.1994-05.com.redhat:d6677488767)
 The relevant API methods are:
 * `get_source_iqn`: get the current source IQN
 * `set_source_iqn`: receive an IQN address as a string, verify it's valid and set it
