@@ -74,4 +74,3 @@ For development purposes, clone this repository and run the following commands:
 easy_install infi.projector
 projector devenv build
 ```
-
