@@ -40,6 +40,8 @@ class ISCSIapi_host_TestCase(TestCase):
 
     def test_01_iscsi_software(self):
         iscsi_sw = infi.iscsiapi.get_iscsi_software_initiator()
+        if get_platform_string().startswith('solaris'):
+            raise SkipTest("iSCSI is installed by default on Solaris")
         if not iscsi_sw.is_installed():
             iscsi_sw.install()
             iscsi_sw.uninstall()
