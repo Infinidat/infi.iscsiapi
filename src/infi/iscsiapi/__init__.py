@@ -25,9 +25,9 @@ def _get_platform_specific_iscsiapi():
     elif platform.startswith('linux'):
         from . import linux
         return linux.LinuxISCSIapi()
-    elif platform.startswith('solaris'):
-        from . import solaris
-        return solaris.SolarisISCSIapi()
+    # elif platform.startswith('solaris'):
+        # from . import solaris
+        # return solaris.SolarisISCSIapi()
     else:
         raise ImportError("not supported on this platform")
 
