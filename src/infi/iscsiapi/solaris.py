@@ -16,7 +16,7 @@ class SolarisISCSIapi(base.ConnectionManager):
             return availble_targets
         cmd = ['iscsiadm', 'list', 'discovery-address', '-v']
         process = execute(cmd)
-        if process.get_returncode != 0:
+        if process.get_returncode() != 0:
             raise iscsi_exceptions.NoNetworkAccess("cmd {} failed with {} {}".format(cmd,
                          process.get_stdout(), process.get_stderr()))
         output = process.get_stdout().splitlines()
@@ -174,8 +174,8 @@ class SolarisISCSIapi(base.ConnectionManager):
         '''
         import re
         if target:
-            execute(['iscsiadm', 'remove', 'discovery-address',
-                    self._parse_discovery_address(target.get_iqn(target))])
+            ip_address ,port = self._parse_discovery_address(str(target.get_iqn()))
+            execute(['iscsiadm', 'remove', 'discovery-address', ip_address])
         else:
             cmd = ['iscsiadm', 'list', 'discovery-address']
             process = execute_assert_success(cmd)
