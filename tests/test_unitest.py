@@ -80,7 +80,7 @@ class ISCSIapi_host_TestCase(TestCase):
         iscsi.undiscover()
         if iscsi.get_discovered_targets() != []:
             for target in iscsi.get_discovered_targets():
-                iscsi.logout(target)
+                iscsi.logout_all(target)
         self.assertEqual(len(iscsi.get_discovered_targets()), 0 )
         net_space = setup_iscsi_on_infinibox(self.system_sdk)
         target = iscsi.discover(net_space.get_field('ips')[0].ip_address)
