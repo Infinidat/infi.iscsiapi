@@ -62,7 +62,7 @@ class WindowsISCSIapi(base.ConnectionManager):
             logger.error(msg.format(ip_address, e, ip_address))
             raise
 
-    def _return_target(self, ip_address, port, outbound_chap, inbound_chap):
+    def _return_target(self, ip_address, port):
         endpoints = []
         iqn = None
         for session in self._get_connectivity_using_wmi():
@@ -72,7 +72,7 @@ class WindowsISCSIapi(base.ConnectionManager):
         if iqn is None:
             raise RuntimeError("iqn is empty, it means that the discovery address {} didn't returned from the target"
                                .format(ip_address))
-        return base.Target(endpoints, inbound_chap, outbound_chap, base.Endpoint(ip_address, port), iqn)
+        return base.Target(endpoints, base.Endpoint(ip_address, port), iqn)
 
     def _get_discovery_endpoints(self):
         '''return all discovery endpoints currently use only for undiscover
@@ -88,7 +88,7 @@ class WindowsISCSIapi(base.ConnectionManager):
         return discovery_endpoints
 
 
-    def discover(self, ip_address, port=3260, outbound_chap=None, inbound_chap=None):
+    def discover(self, ip_address, port=3260):
         '''perform an iscsi discovery to an ip address
         '''
         # TODO: support chap
@@ -101,7 +101,7 @@ class WindowsISCSIapi(base.ConnectionManager):
                 break
         if not already_discoverd:
             self._execute_discover(ip_address, port)
-        return self._return_target(ip_address, port, outbound_chap, inbound_chap)
+        return self._return_target(ip_address, port)
 
     def login(self, target, endpoint, num_of_connections=1):
         '''receives target and endpoint and login to it
@@ -246,7 +246,7 @@ class WindowsISCSIapi(base.ConnectionManager):
             if discovery_endpoint == []:
                 raise RuntimeError("couldn't find an expected wmi object")
             discovery_endpoint['port'] = int(str(discovery_endpoint['port']), base=10)
-            target = base.Target(endpoints, None, None,
+            target = base.Target(endpoints,
                                  base.Endpoint(discovery_endpoint['ip'], str(discovery_endpoint['port'])), iqn)
             if target not in discovered_targets:
                 discovered_targets.append(target)

@@ -105,7 +105,7 @@ class SolarisISCSIapi(base.ConnectionManager):
             for connectivity in self._parse_discovered_targets():
                 if connectivity['iqn'] == iqn:
                     endpoints.append(base.Endpoint(connectivity['dst_ip'], connectivity['dst_port']))
-            targets.append(base.Target(endpoints, None, None, discovery_endpoint, iqn))
+            targets.append(base.Target(endpoints, discovery_endpoint, iqn))
         return targets
 
     def get_source_iqn(self):
@@ -160,7 +160,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         for target_connectivity in self._parse_discovered_targets():
             if iqn == target_connectivity['iqn']:
                 endpoints.append(base.Endpoint(target_connectivity['dst_ip'], target_connectivity['dst_port']))
-        return base.Target(endpoints, None, None, base.Endpoint(ip_address, port), iqn)
+        return base.Target(endpoints, base.Endpoint(ip_address, port), iqn)
 
     def undiscover(self, target=None):
         '''logout from everything and delete all discovered target if target=None otherwise delete only the target

@@ -39,7 +39,7 @@ print api.get_source_iqn()
 To connect to an iSCSI storage array, the host first runs "discovery" on one of the IP addresses of the storage system
 to get all the relevant IP addresses. Then for each IP addresses the host runs "login" to get an iSCSI "session".
 The relevant API methods are:
-* `discover`: perform an iSCSI discovery to an ip address (supports CHAP authentication). Returns a `Target` instance.
+* `discover`: perform an iSCSI discovery to an ip address. Returns a `Target` instance.
 * `get_discovered_targets`: return a list of discovered target objects
 * `undiscover`: delete all discovered sessions or only iqn specific active sessions
 * `login`: receives target and endpoint (IP address and port) and login to it

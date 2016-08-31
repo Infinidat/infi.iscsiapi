@@ -35,10 +35,8 @@ class Session(object):
 class Target(object):
     '''class that contains the iscsi connection spec
     '''
-    def __init__(self, endpoints, inbound_chap, outbound_chap, discovery_endpoint, iqn):
+    def __init__(self, endpoints, discovery_endpoint, iqn):
         self._endpoints = endpoints
-        self._inbound_chap = inbound_chap
-        self._outbound_chap = outbound_chap
         self._discovery_endpoint = discovery_endpoint
         self._iqn = iqn
 
@@ -47,12 +45,6 @@ class Target(object):
 
     def get_endpoints(self):
         return self._endpoints
-
-    def get_inbound_chap(self):
-        return self._inbound_chap
-
-    def get_outbound_chap(self):
-        return self._outbound_chap
 
     def get_discovery_endpoint(self):
         return self._discovery_endpoint
@@ -113,7 +105,7 @@ class ConnectionManager(object):
     '''Class that contains the main iscsi methods for connecting iscsi initiator
     to an iscsi target
     '''
-    def discover(self, ip_address, port=3260, outbound_chap=None, inbound_chap=None):
+    def discover(self, ip_address, port=3260):
         '''perform an iscsi discovery to an ip address
         '''
         raise NotImplementedError()
