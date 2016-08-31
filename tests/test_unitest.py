@@ -1,7 +1,5 @@
 from infi.vendata.integration_tests import TestCase
-from infi.vendata.integration_tests.iscsi import is_iscsi_nic_available, setup_iscsi_network_interface_on_host
-from mock import patch, MagicMock, mock_open
-from infi.execute import execute_assert_success
+from infi.vendata.integration_tests.iscsi import setup_iscsi_network_interface_on_host
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from unittest import SkipTest
 from infi.os_info import get_platform_string
@@ -63,16 +61,16 @@ class ISCSIapi_host_TestCase(TestCase):
         from infi.vendata.integration_tests.iscsi import setup_iscsi_on_infinibox
         iscsi = infi.iscsiapi.get_iscsiapi()
         iscsi.undiscover()
-        self.assertEqual(len(iscsi.get_discovered_targets()), 0 )
+        self.assertEqual(len(iscsi.get_discovered_targets()), 0)
         net_space = setup_iscsi_on_infinibox(self.system_sdk)
         target = iscsi.discover(net_space.get_field('ips')[0].ip_address)
-        self.assertEqual(len(iscsi.get_discovered_targets()), 1 )
-        self.assertEqual(type(target), infi.iscsiapi.base.Target )
+        self.assertEqual(len(iscsi.get_discovered_targets()), 1)
+        self.assertEqual(type(target), infi.iscsiapi.base.Target)
         self.assertEqual(target.get_discovery_endpoint().get_ip_address(),net_space.get_field('ips')[0].ip_address)
-        self.assertNotEqual(target.get_iqn(), None )
+        self.assertNotEqual(target.get_iqn(), None)
         self.assertEqual(iscsi.get_discovered_targets()[0].get_iqn(), target.get_iqn())
         iscsi.undiscover(target)
-        self.assertEqual(len(iscsi.get_discovered_targets()), 0 )
+        self.assertEqual(len(iscsi.get_discovered_targets()), 0)
 
     def test_login_logout(self):
         from infi.vendata.integration_tests.iscsi import setup_iscsi_on_infinibox
@@ -81,7 +79,7 @@ class ISCSIapi_host_TestCase(TestCase):
         if iscsi.get_discovered_targets() != []:
             for target in iscsi.get_discovered_targets():
                 iscsi.logout_all(target)
-        self.assertEqual(len(iscsi.get_discovered_targets()), 0 )
+        self.assertEqual(len(iscsi.get_discovered_targets()), 0)
         net_space = setup_iscsi_on_infinibox(self.system_sdk)
         target = iscsi.discover(net_space.get_field('ips')[0].ip_address)
         sessions = iscsi.login_all(target)

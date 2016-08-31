@@ -18,7 +18,7 @@ ISCSI_SECURITY_TRANSPORT_MODE_PREFERRED = 0X00000020
 ISCSI_SECURITY_PFS = 0x00000010
 ISCSI_SECURITY_NEGOTIATE_VIA_AGGRESSIVE_MODE = 0x00000008
 ISCSI_SECURITY_NEGOTIATE_VIA_MAIN_MODE = 0x00000004
-ISCSI_SECURITY_IPSEC_ENABLED =0x00000002
+ISCSI_SECURITY_IPSEC_ENABLED = 0x00000002
 ISCSI_SECURITY_VALID_FLAGS = 1
 
 
@@ -87,7 +87,6 @@ class WindowsISCSIapi(base.ConnectionManager):
                 discovery_endpoints.append(endpoint)
         return discovery_endpoints
 
-
     def discover(self, ip_address, port=3260):
         '''perform an iscsi discovery to an ip address
         '''
@@ -147,21 +146,21 @@ class WindowsISCSIapi(base.ConnectionManager):
                 {Mapping_Count}'''
 
         args = command.format(login_command, TargetName=target.get_iqn(),
-                              ReportToPNP='t', # If the value is T or t then the LUN is exposed as a device
+                              ReportToPNP='t',  # If the value is T or t then the LUN is exposed as a device
                               TargetPortalAddress=endpoint.get_ip_address(),
                               TargetPortalSocket=endpoint.get_port(),
                               InitiatorInstance=self._initiator.get_initiator_name(),
-                              Port_number='*', # the kernel mode initiator driver chooses the initiator port used
+                              Port_number='*',  # the kernel mode initiator driver chooses the initiator port used
                               Security_Flags=self._security_flags,
                               Login_Flags=self._login_flags,
-                              Header_Digest='*', # the digest setting is determined by the initiator kernel mode driver
+                              Header_Digest='*',  # the digest setting is determined by the initiator kernel mode driver
                               Data_Digest=0,
-                              Max_Connections='*', # the kernel mode initiator driver chooses the value for maximum connections
+                              Max_Connections='*',  # the kernel mode initiator driver chooses the value for maximum connections
                               DefaultTime2Wait=0,
                               DefaultTime2Retain=0,
-                              Username='*', # the iSCSI initiator service will use the initiator node name as the CHAP username
-                              Password='*', # The initiator will use this secret to compute a hash value based on the challenge sent by the target
-                              AuthType=ISCSI_NO_AUTH_TYPE, # TODO add chap support
+                              Username='*',  # the iSCSI initiator service will use the initiator node name as the CHAP username
+                              Password='*',  # The initiator will use this secret to compute a hash value based on the challenge sent by the target
+                              AuthType=ISCSI_NO_AUTH_TYPE,  # TODO add chap support
                               Key=0,
                               Mapping_Count=0)
         logger.info("running iscsicli LoginTarget {!r}".format(args))
@@ -219,7 +218,7 @@ class WindowsISCSIapi(base.ConnectionManager):
         for target in client.execute_query('SELECT * from  MSIscsiInitiator_TargetClass'):
             iqn = target.Properties_.Item('TargetName').Value
             for portal in target.Properties_.Item('PortalGroups').Value[0].Properties_.Item('Portals').Value:
-                target_connectivity = {'dst_ip':portal.Properties_.Item('Address').Value,
+                target_connectivity = {'dst_ip': portal.Properties_.Item('Address').Value,
                                        'dst_port': portal.Properties_.Item('Port').Value, 'iqn': iqn}
                 if target_connectivity not in availble_targets_connectivity:
                     availble_targets_connectivity.append(target_connectivity)

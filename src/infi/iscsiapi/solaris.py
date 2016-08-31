@@ -1,4 +1,4 @@
-from infi.execute import execute_assert_success, execute, ExecutionError
+from infi.execute import execute_assert_success, execute
 from . import base, iscsi_exceptions
 from infi.dtypes.iqn import IQN
 from infi.os_info import get_platform_string
@@ -73,7 +73,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         for line_number, line in enumerate(output):
             if re.search(r'Target: ', line):
                 iqn = line.split()[1]
-                _ = IQN(iqn) # make sure iqn is valid
+                _ = IQN(iqn)  # make sure iqn is valid
                 for ident_line in range(1, len(output)):
                     if re.search(r'ISID:', output[line_number + ident_line]):
                         uid = output[line_number + ident_line].split()[1]
@@ -100,7 +100,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         uniq_iqn = list(set(iqn_list))
         for iqn in uniq_iqn:
             endpoints = []
-            ip_address ,port = self._parse_discovery_address(iqn)
+            ip_address, port = self._parse_discovery_address(iqn)
             discovery_endpoint = base.Endpoint(ip_address, port)
             for connectivity in self._parse_discovered_targets():
                 if connectivity['iqn'] == iqn:
@@ -116,7 +116,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         iqn_line = process.get_stdout().splitlines()[0]
         if re.search(r'Initiator node name', iqn_line):
             iqn = iqn_line.split('Initiator node name: ')[1]
-            return IQN(iqn) # Validate iqn is legal
+            return IQN(iqn)  # Validate iqn is legal
         else:
             raise RuntimeError("something isn't right with {}, {}, {!r}".format(
                                 iqn, iqn_line, process.get_stdout()))
@@ -168,7 +168,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         '''
         import re
         if target:
-            ip_address ,port = self._parse_discovery_address(str(target.get_iqn()))
+            ip_address, port = self._parse_discovery_address(str(target.get_iqn()))
             execute(['iscsiadm', 'remove', 'discovery-address', ip_address])
         else:
             cmd = ['iscsiadm', 'list', 'discovery-address']
@@ -216,7 +216,6 @@ class SolarisISCSIapi(base.ConnectionManager):
             for target in targets:
                 sessions.extend(get_sessions_for_target(target))
             return sessions
-
 
     def rescan(self):
         '''does nothing in Solaris
