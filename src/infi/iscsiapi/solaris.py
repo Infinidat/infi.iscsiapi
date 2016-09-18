@@ -12,6 +12,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         '''In Solaris we need to configure in advance how many session an initiator can open.
         This to each target
         '''
+        #  Not being used anymore due to INFINIBOX-24755
         con_number = self._how_many_connections_should_be_configured()
         logger.info("Changing number of sessions to {}".format(con_number))
         cmd = ['iscsiadm', 'modify', 'initiator-node', '-c', str(con_number)]
@@ -182,8 +183,7 @@ class SolarisISCSIapi(base.ConnectionManager):
                              "Therefore, login to a single endpoint couldn't be implemented")
 
     def login_all(self, target):
-        logger.info("login_all in Solaris login to all available targets")
-        self._set_number_of_connection_to_infinibox()
+        logger.info("login_all in Solaris login to all available Targets !")
         self._enable_iscsi_auto_login()
         return self.get_sessions(target=target)
 
@@ -191,7 +191,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         raise NotImplemented("Logout from a single session isn't supported in Solaris")
 
     def logout_all(self, target):
-        logger.warn("performing logout in Solaris disconnect momently all sessions from all targets")
+        logger.warn("Performing logout in Solaris disconnect momentarily all sessions from all targets")
         self._disable_iscsi_auto_login()
         self.undiscover(target)
         self._enable_iscsi_auto_login()
