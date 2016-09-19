@@ -1,5 +1,6 @@
 from infi.execute import execute_assert_success, execute
 from . import base
+from . import auth
 from infi.dtypes.iqn import IQN
 from infi.os_info import get_platform_string
 import infi.pkgmgr
@@ -127,6 +128,41 @@ class LinuxISCSIapi(base.ConnectionManager):
         if 'ubuntu' in get_platform_string():
             execute_assert_success(['service', 'open-iscsi', 'restart'])
 
+
+    def _remove_comments(self, list_of_strings):
+        '''get list of strings and return list of strings without the commented out ones'''
+        import re
+        no_comment = []
+        regex = re.compile(r'^#.+')
+        for line in list_of_strings:
+            if not re.match(regex, line):
+                no_comment.append(line)
+        return no_comment
+
+    def _update_node_parameter(self, name, value):
+        args = ['iscsiadm','-m', 'node', '-o', 'update', '-n', name, '-v', value]
+        if "password" not in name:
+            logger.debug("running {}".format(args))
+        return execute_assert_success(args)
+
+    def _set_auth(self, auth):
+        if auth.__class__.__name__ == "ChapAuth":
+            self._update_node_parameter('node.session.auth.authmethod', 'CHAP')
+            self._update_node_parameter('node.session.auth.username', auth.get_inbound_username())
+            self._update_node_parameter('node.session.auth.password', auth.get_inbound_secret())
+        elif auth.__class__.__name__ == "MutualChapAuth":
+            self._update_node_parameter('node.session.auth.authmethod', 'CHAP')
+            self._update_node_parameter('node.session.auth.username', auth.get_inbound_username())
+            self._update_node_parameter('node.session.auth.password', auth.get_inbound_secret())
+            self._update_node_parameter('node.session.auth.username_in', auth.get_outbound_username())
+            self._update_node_parameter('node.session.auth.password_in', auth.get_outbound_secret())
+        elif auth.__class__.__name__ == "NoAuth":
+            self._update_node_parameter('node.session.auth.authmethod', 'None')
+            self._update_node_parameter('node.session.auth.username', "")
+            self._update_node_parameter('node.session.auth.password', "")
+            self._update_node_parameter('node.session.auth.username_in', "")
+            self._update_node_parameter('node.session.auth.password_in', "")
+
     def get_discovered_targets(self):
         iqn_list = []
         targets = []
@@ -141,16 +177,6 @@ class LinuxISCSIapi(base.ConnectionManager):
                     endpoints.append(base.Endpoint(connectivity['dst_ip'], connectivity['dst_port']))
             targets.append(base.Target(endpoints, discovery_endpoint, iqn))
         return targets
-
-    def _remove_comments(self, list_of_strings):
-        '''get list of strings and return list of strings without the commented out ones'''
-        import re
-        no_comment = []
-        regex = re.compile(r'^#.+')
-        for line in list_of_strings:
-            if not re.match(regex, line):
-                no_comment.append(line)
-        return no_comment
 
     def get_source_iqn(self):
         '''return infi.dtypes.iqn type iqn if iscsi initiator file exists
@@ -178,7 +204,7 @@ class LinuxISCSIapi(base.ConnectionManager):
             shutil.copy(ISCSI_INITIATOR_IQN_FILE, ISCSI_INITIATOR_IQN_FILE + '.orig')
         replacement_strig = 'InitiatorName=' + iqn
         with open(ISCSI_INITIATOR_IQN_FILE, 'w') as fd:
-            fd.write(replacement_strig)
+            fd.write(replacement_strig + "\n")
         logger.info("iqn was replaced to {}".format(iqn))
         logger.info("reloading iscsi service")
         self._reload_iscsid_service()
@@ -198,7 +224,8 @@ class LinuxISCSIapi(base.ConnectionManager):
                 endpoints.append(base.Endpoint(target_connectivity['dst_ip'], target_connectivity['dst_port']))
         return base.Target(endpoints, base.Endpoint(ip_address, port), iqn)
 
-    def login(self, target, endpoint, num_of_connections=1):
+    def login(self, target, endpoint, auth, num_of_connections=1):
+        self._set_auth(auth)
         args = ['iscsiadm', '-m', 'node', '-l', '-T', target.get_iqn(), '-p',
         endpoint.get_ip_address() + ':' + endpoint.get_port()]
         execute_assert_success(args)
@@ -206,7 +233,8 @@ class LinuxISCSIapi(base.ConnectionManager):
             if session.get_target_endpoint() == endpoint:
                 return session
 
-    def login_all(self, target):
+    def login_all(self, target, auth):
+        self._set_auth(auth)
         args = ['iscsiadm', '-m', 'node', '-l', '-T', str(target.get_iqn())]
         execute_assert_success(args)
         return self.get_sessions(target=target)
@@ -239,7 +267,6 @@ class LinuxISCSIapi(base.ConnectionManager):
         '''logout from everything and delete all discovered target if target=None otherwise delete only the target
         discovery endpoints
         '''
-
         if target:
             self.logout_all(target)
             execute(['iscsiadm', '-m', 'node', '-o', 'delete', str(target.get_iqn())])
@@ -247,6 +274,7 @@ class LinuxISCSIapi(base.ConnectionManager):
             for target in self.get_discovered_targets():
                 self.logout_all(target)
             execute(['iscsiadm', '-m', 'node', '-o', 'delete'])
+
 
 class LinuxSoftwareInitiator(base.SoftwareInitiator):
     def is_installed(self):
