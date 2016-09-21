@@ -123,6 +123,9 @@ class ISCSIapi_host_TestCase(TestCase):
         from infi.vendata.integration_tests.iscsi import setup_iscsi_on_infinibox
         from infi.iscsiapi import auth as iscsi_auth
         from infi.execute import ExecutionError
+        if get_platform_string().startswith('solaris') or \
+           get_platform_string().startswith('windows'):
+            raise SkipTest("Auth still not supported on this OS")
         iscsi = infi.iscsiapi.get_iscsiapi()
         iscsi.undiscover()
         if iscsi.get_discovered_targets() != []:

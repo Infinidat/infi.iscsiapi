@@ -140,7 +140,8 @@ class LinuxISCSIapi(base.ConnectionManager):
         return no_comment
 
     def _update_node_parameter(self, name, value):
-        args = ['iscsiadm','-m', 'node', '-o', 'update', '-n', name, '-v', value]
+        # TODO: support per target config
+        args = ['iscsiadm', '-m', 'node', '-o', 'update', '-n', name, '-v', value]
         if "password" not in name:
             logger.debug("running {}".format(args))
         return execute_assert_success(args)
