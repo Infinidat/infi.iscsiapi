@@ -1,9 +1,10 @@
+import infi.iscsiapi
 from infi.vendata.integration_tests import TestCase
 from infi.vendata.integration_tests.iscsi import setup_iscsi_network_interface_on_host
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from unittest import SkipTest
 from infi.os_info import get_platform_string
-import infi.iscsiapi
+from time import sleep
 
 # reduce urlib error
 import requests
@@ -12,6 +13,10 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 INBOUND_USERNAME = "chap_user"
 INBOUND_SECRET = "chap_pass-1234"
 OUTBOUND_USERNAME = "chap_user2"
+if get_platform_string().startswith('windows'):
+    iscsi = infi.iscsiapi.get_iscsiapi()
+    OUTBOUND_USERNAME = str(iscsi.get_source_iqn())
+
 OUTBOUND_SECRET = "PASS-chap_8&123123"
 
 class ISCSIapi_host_TestCase(TestCase):
@@ -31,7 +36,7 @@ class ISCSIapi_host_TestCase(TestCase):
             purge_iscsi_on_infinibox(cls.system.get_infinisdk())
         except:
             pass
-        cls.system.purge()
+        # cls.system.purge()
         cls.system.release()
 
     @classmethod
@@ -68,6 +73,7 @@ class ISCSIapi_host_TestCase(TestCase):
         iscsi.undiscover()
         self.assertEqual(len(iscsi.get_discovered_targets()), 0)
         net_space = setup_iscsi_on_infinibox(self.system_sdk)
+        sleep(5)
         target = iscsi.discover(net_space.get_field('ips')[0].ip_address)
         self.assertEqual(len(iscsi.get_discovered_targets()), 1)
         self.assertEqual(type(target), infi.iscsiapi.base.Target)
@@ -119,13 +125,9 @@ class ISCSIapi_host_TestCase(TestCase):
         return str(security_method.lower())
 
     def test_login_logout_with_auth(self):
-        import infinisdk
         from infi.vendata.integration_tests.iscsi import setup_iscsi_on_infinibox
         from infi.iscsiapi import auth as iscsi_auth
         from infi.execute import ExecutionError
-        if get_platform_string().startswith('solaris') or \
-           get_platform_string().startswith('windows'):
-            raise SkipTest("Auth still not supported on this OS")
         iscsi = infi.iscsiapi.get_iscsiapi()
         iscsi.undiscover()
         if iscsi.get_discovered_targets() != []:
@@ -143,14 +145,20 @@ class ISCSIapi_host_TestCase(TestCase):
         self.assertEqual(len(sessions), len(target.get_endpoints()))
         iscsi.logout_all(target)
         auth = iscsi_auth.NoAuth()
-        try:
-            iscsi.login_all(target, auth)
-        except ExecutionError:
-            pass
+        if get_platform_string().startswith('linux'):
+            try:
+                iscsi.login_all(target, auth)
+            except ExecutionError:
+                pass
         sessions = iscsi.get_sessions(target=target)
         self.assertEqual(len(sessions), 0)
-        self.assertEqual(str(self._change_auth_on_ibox(host, 'mutual_chap')), 'mutual_chap')
-        auth = iscsi_auth.MutualChapAuth(INBOUND_USERNAME, INBOUND_SECRET, OUTBOUND_USERNAME, OUTBOUND_SECRET)
-        sessions = iscsi.login_all(target, auth)
-        self.assertEqual(len(sessions), len(target.get_endpoints()))
-        iscsi._set_auth(iscsi_auth.NoAuth())  # host cleanup
+        if get_platform_string().startswith('windows') or\
+           get_platform_string().startswith('solaris'):
+            '''Due to mutual chap bug nothing to check here for now'''
+            pass
+        else:
+            self.assertEqual(str(self._change_auth_on_ibox(host, 'mutual_chap')), 'mutual_chap')
+            auth = iscsi_auth.MutualChapAuth(INBOUND_USERNAME, INBOUND_SECRET, OUTBOUND_USERNAME, OUTBOUND_SECRET)
+            sessions = iscsi.login_all(target, auth)
+            self.assertEqual(len(sessions), len(target.get_endpoints()))
+            iscsi._set_auth(iscsi_auth.NoAuth())  # host cleanup

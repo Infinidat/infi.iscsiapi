@@ -1,13 +1,14 @@
 from infi.win32service import ServiceControlManagerContext
 from infi.execute import execute_assert_success, execute, ExecutionError
 from . import base
+from . import auth
 from infi.dtypes.iqn import IQN
 from infi.wmi import WmiClient
 
 from logging import getLogger
 logger = getLogger(__name__)
 
-
+ISCSI_LOGIN_FLAG_MULTIPATH_DISABLED = 0
 ISCSI_LOGIN_FLAG_REQUIRE_IPSEC = 1
 ISCSI_LOGIN_FLAG_MULTIPATH_ENABLED = 2
 ISCSI_NO_AUTH_TYPE = 0
@@ -30,10 +31,10 @@ class WindowsISCSIapi(base.ConnectionManager):
         self._security_flags = 0
 
     def disable_mpio(self):
-        self._login_flags ^= ISCSI_LOGIN_FLAG_MULTIPATH_ENABLED
+        self._login_flags = ISCSI_LOGIN_FLAG_MULTIPATH_DISABLED
 
     def enable_mpio(self):
-        self._login_flags &= ISCSI_LOGIN_FLAG_MULTIPATH_ENABLED
+        self._login_flags = ISCSI_LOGIN_FLAG_MULTIPATH_ENABLED
 
     def _create_initiator_obj_if_needed(self):
         if not self._initiator:
@@ -87,6 +88,14 @@ class WindowsISCSIapi(base.ConnectionManager):
                 discovery_endpoints.append(endpoint)
         return discovery_endpoints
 
+    def _return_auth_type(self, auth):
+        if auth.__class__.__name__ == "ChapAuth":
+            return ISCSI_CHAP_AUTH_TYPE
+        elif auth.__class__.__name__ == "MutualChapAuth":
+            return ISCSI_MUTUAL_CHAP_AUTH_TYPE
+        elif auth.__class__.__name__ == "NoAuth":
+            return ISCSI_NO_AUTH_TYPE
+
     def discover(self, ip_address, port=3260):
         '''perform an iscsi discovery to an ip address
         '''
@@ -102,19 +111,19 @@ class WindowsISCSIapi(base.ConnectionManager):
             self._execute_discover(ip_address, port)
         return self._return_target(ip_address, port)
 
-    def login(self, target, endpoint, num_of_connections=1):
+    def login(self, target, endpoint, auth, num_of_connections=1):
         '''receives target and endpoint and login to it
         '''
         # LoginTarget is not persistent across reboots
         # LoginPersistentTarget will make sure we connect after reboot but not immediately
         # so we need to call both
-        self._iscsicli_login('LoginTarget', target, endpoint, num_of_connections)
-        self._iscsicli_login('LoginPersistentTarget', target, endpoint, num_of_connections)
+        self._iscsicli_login('LoginTarget', target, endpoint, auth, num_of_connections)
+        self._iscsicli_login('LoginPersistentTarget', target, endpoint, auth, num_of_connections)
         for session in self.get_sessions():
             if session.get_target_endpoint() == endpoint:
                 return session
 
-    def _iscsicli_login(self, login_command, target, endpoint, num_of_connections=1):
+    def _iscsicli_login(self, login_command, target, endpoint, auth, num_of_connections=1):
         # Due to a bug only in 2008 multiple sessions isn't handled ok unless initiator name is monitored
         # Therefore we don't use Qlogin, Details:
         # https://social.technet.microsoft.com/Forums/office/en-US/4b2420d6-0f28-4d12-928d-3920896f582d/iscsi-initiator-target-not-reconnecting-on-reboot?forum=winserverfiles
@@ -145,6 +154,13 @@ class WindowsISCSIapi(base.ConnectionManager):
                 {DefaultTime2Retain} {Username} {Password} {AuthType} {Key}
                 {Mapping_Count}'''
 
+        if self._return_auth_type(auth) != ISCSI_NO_AUTH_TYPE:
+            username = auth.get_inbound_username()
+            password = auth.get_inbound_secret()
+        else:
+            username = '*'
+            password = '*'
+
         args = command.format(login_command, TargetName=target.get_iqn(),
                               ReportToPNP='t',  # If the value is T or t then the LUN is exposed as a device
                               TargetPortalAddress=endpoint.get_ip_address(),
@@ -158,9 +174,9 @@ class WindowsISCSIapi(base.ConnectionManager):
                               Max_Connections='*',  # the kernel mode initiator driver chooses the value for maximum connections
                               DefaultTime2Wait=0,
                               DefaultTime2Retain=0,
-                              Username='*',  # the iSCSI initiator service will use the initiator node name as the CHAP username
-                              Password='*',  # The initiator will use this secret to compute a hash value based on the challenge sent by the target
-                              AuthType=ISCSI_NO_AUTH_TYPE,  # TODO add chap support
+                              Username=username,  # the iSCSI initiator service will use the initiator node name as the CHAP username
+                              Password=password,  # The initiator will use this secret to compute a hash value based on the challenge sent by the target
+                              AuthType=self._return_auth_type(auth),
                               Key=0,
                               Mapping_Count=0)
         logger.info("running iscsicli LoginTarget {!r}".format(args))
@@ -171,11 +187,11 @@ class WindowsISCSIapi(base.ConnectionManager):
             if "target has already been logged in" not in process.get_stdout():
                 raise RuntimeError(process.get_stdout())
 
-    def login_all(self, target):
+    def login_all(self, target, auth):
         ''' login to all endpoint of a target and return the session it achieved
         '''
         for endpoint in target.get_endpoints():
-            self.login(target, endpoint)
+            self.login(target, endpoint, auth)
         return self.get_sessions(target=target)
 
     def logout(self, session):

@@ -7,6 +7,19 @@ from logging import getLogger
 logger = getLogger(__name__)
 
 class SolarisISCSIapi(base.ConnectionManager):
+    def _execute_assert_n_log(self, cmd, log_prefix='running: ', log_level='debug'):
+        try:
+            getattr(logger, str(log_level))(log_prefix + "{}".format(cmd))
+        except AttributeError as e:
+            logger.error( "logger.{} doesn't exist, {!r}".format(log_level, e))
+        return execute_assert_success(cmd)
+
+    def _execute_n_log(self, cmd, log_prefix='running: ', log_level='debug'):
+        try:
+            getattr(logger, str(log_level))(log_prefix + cmd)
+        except AttributeError as e:
+            logger.error( "logger.{} doesn't exist, {!r}".format(log_level, e))
+        return execute(cmd)
 
     def _set_number_of_connection_to_infinibox(self):
         '''In Solaris we need to configure in advance how many session an initiator can open.
@@ -16,8 +29,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         con_number = self._how_many_connections_should_be_configured()
         logger.info("Changing number of sessions to {}".format(con_number))
         cmd = ['iscsiadm', 'modify', 'initiator-node', '-c', str(con_number)]
-        logger.debug("running: {}".format(cmd))
-        execute_assert_success(cmd)
+        self._execute_assert_n_log(cmd)
 
     def _how_many_connections_should_be_configured(self):
         max_endpoints = len(self.get_discovered_targets()[0].get_endpoints())
@@ -134,18 +146,40 @@ class SolarisISCSIapi(base.ConnectionManager):
 
     def _enable_iscsi_discovery(self):
         cmd = ['iscsiadm', 'modify', 'discovery', '-s', 'enable']
-        logger.debug("running:".format(cmd))
-        return execute_assert_success(cmd)
+        return self._execute_assert_n_log(cmd)
 
     def _enable_iscsi_auto_login(self):
         cmd = ['iscsiadm', 'modify', 'discovery', '-t', 'enable']
-        logger.debug("running:".format(cmd))
-        return execute_assert_success(cmd)
+        return self._execute_assert_n_log(cmd)
+
 
     def _disable_iscsi_auto_login(self):
         cmd = ['iscsiadm', 'modify', 'discovery', '-t', 'disable']
-        logger.debug("running:".format(cmd))
-        return execute_assert_success(cmd)
+        return self._execute_assert_n_log(cmd)
+
+
+    def _set_auth(self, auth):
+        import pexpect
+        if auth.__class__.__name__ == "ChapAuth":
+            cmd = ['iscsiadm', 'modify', 'initiator-node', '--authentication', 'CHAP']
+            self._execute_assert_n_log(cmd)
+            cmd = ['iscsiadm', 'modify', 'initiator-node', '--CHAP-name', auth.get_inbound_username()]
+            self._execute_assert_n_log(cmd)
+            # cmd = ['iscsiadm', 'modify', 'initiator-node', '--CHAP-secret']
+            cmd = 'iscsiadm modify initiator-node --CHAP-secret'
+            process = pexpect.spawn(cmd)
+            process.expect("Enter secret:")
+            process.sendline(auth.get_inbound_secret())
+        elif auth.__class__.__name__ == "MutualChapAuth":
+            cmd = ['iscsiadm', 'modify', 'initiator-node', '--authentication', 'CHAP']
+            self._execute_assert_n_log(cmd)
+            cmd = ['iscsiadm', 'modify', 'initiator-node', '--CHAP-name', auth.get_inbound_username()]
+            self._execute_assert_n_log(cmd)
+            cmd = ['iscsiadm', 'modify', 'initiator-node', '--CHAP-secret', auth.get_inbound_secret()]
+            self._execute_assert_n_log(cmd)
+        elif auth.__class__.__name__ == "NoAuth":
+            cmd = ['iscsiadm', 'modify', 'initiator-node', '--authentication', 'none']
+            self._execute_assert_n_log(cmd)
 
     def discover(self, ip_address, port=3260):
         '''initiate discovery and returns a list of dicts which contain all available targets
@@ -178,12 +212,13 @@ class SolarisISCSIapi(base.ConnectionManager):
             for line in process.get_stdout().splitlines():
                 execute(['iscsiadm', 'remove', 'discovery-address', regex.search(line).groupdict()['ip']])
 
-    def login(self, target, endpoint, num_of_connections=1):
+    def login(self, target, endpoint, auth, num_of_connections=1):
         raise NotImplemented("In Solaris login is supported only to all available endpoints\n" +
                              "Therefore, login to a single endpoint couldn't be implemented")
 
-    def login_all(self, target):
+    def login_all(self, target, auth):
         logger.info("login_all in Solaris login to all available Targets !")
+        self._set_auth(auth)
         self._enable_iscsi_auto_login()
         return self.get_sessions(target=target)
 
