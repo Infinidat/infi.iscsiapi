@@ -1,6 +1,6 @@
 from infi.execute import execute_assert_success, execute
 from . import base
-from . import auth
+from . import auth as iscsiapi_auth
 from infi.dtypes.iqn import IQN
 from infi.os_info import get_platform_string
 import infi.pkgmgr
@@ -147,17 +147,17 @@ class LinuxISCSIapi(base.ConnectionManager):
         return execute_assert_success(args)
 
     def _set_auth(self, auth):
-        if auth.__class__.__name__ == "ChapAuth":
+        if isinstance(auth, iscsiapi_auth.ChapAuth):
             self._update_node_parameter('node.session.auth.authmethod', 'CHAP')
             self._update_node_parameter('node.session.auth.username', auth.get_inbound_username())
             self._update_node_parameter('node.session.auth.password', auth.get_inbound_secret())
-        elif auth.__class__.__name__ == "MutualChapAuth":
+        elif isinstance(auth, iscsiapi_auth.MutualChapAuth):
             self._update_node_parameter('node.session.auth.authmethod', 'CHAP')
             self._update_node_parameter('node.session.auth.username', auth.get_inbound_username())
             self._update_node_parameter('node.session.auth.password', auth.get_inbound_secret())
             self._update_node_parameter('node.session.auth.username_in', auth.get_outbound_username())
             self._update_node_parameter('node.session.auth.password_in', auth.get_outbound_secret())
-        elif auth.__class__.__name__ == "NoAuth":
+        elif isinstance(auth, iscsiapi_auth.NoAuth):
             self._update_node_parameter('node.session.auth.authmethod', 'None')
             self._update_node_parameter('node.session.auth.username', "")
             self._update_node_parameter('node.session.auth.password', "")
@@ -225,7 +225,9 @@ class LinuxISCSIapi(base.ConnectionManager):
                 endpoints.append(base.Endpoint(target_connectivity['dst_ip'], target_connectivity['dst_port']))
         return base.Target(endpoints, base.Endpoint(ip_address, port), iqn)
 
-    def login(self, target, endpoint, auth, num_of_connections=1):
+    def login(self, target, endpoint, auth=None, num_of_connections=1):
+        if auth is None:
+            auth = iscsiapi_auth.NoAuth()
         self._set_auth(auth)
         args = ['iscsiadm', '-m', 'node', '-l', '-T', target.get_iqn(), '-p',
         endpoint.get_ip_address() + ':' + endpoint.get_port()]
@@ -234,7 +236,9 @@ class LinuxISCSIapi(base.ConnectionManager):
             if session.get_target_endpoint() == endpoint:
                 return session
 
-    def login_all(self, target, auth):
+    def login_all(self, target, auth=None):
+        if auth is None:
+            auth = iscsiapi_auth.NoAuth()
         self._set_auth(auth)
         args = ['iscsiadm', '-m', 'node', '-l', '-T', str(target.get_iqn())]
         execute_assert_success(args)

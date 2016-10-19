@@ -1,7 +1,7 @@
 from infi.win32service import ServiceControlManagerContext
 from infi.execute import execute_assert_success, execute, ExecutionError
 from . import base
-from . import auth
+from . import auth as iscsiapi_auth
 from infi.dtypes.iqn import IQN
 from infi.wmi import WmiClient
 
@@ -89,11 +89,11 @@ class WindowsISCSIapi(base.ConnectionManager):
         return discovery_endpoints
 
     def _return_auth_type(self, auth):
-        if auth.__class__.__name__ == "ChapAuth":
+        if isinstance(auth, iscsiapi_auth.ChapAuth):
             return ISCSI_CHAP_AUTH_TYPE
-        elif auth.__class__.__name__ == "MutualChapAuth":
+        if isinstance(auth, iscsiapi_auth.MutualChapAuth):
             return ISCSI_MUTUAL_CHAP_AUTH_TYPE
-        elif auth.__class__.__name__ == "NoAuth":
+        if isinstance(auth, iscsiapi_auth.NoAuth):
             return ISCSI_NO_AUTH_TYPE
 
     def discover(self, ip_address, port=3260):
@@ -111,19 +111,21 @@ class WindowsISCSIapi(base.ConnectionManager):
             self._execute_discover(ip_address, port)
         return self._return_target(ip_address, port)
 
-    def login(self, target, endpoint, auth, num_of_connections=1):
+    def login(self, target, endpoint, auth=None, num_of_connections=1):
         '''receives target and endpoint and login to it
         '''
         # LoginTarget is not persistent across reboots
         # LoginPersistentTarget will make sure we connect after reboot but not immediately
         # so we need to call both
+        if auth is None:
+            auth = iscsiapi_auth.NoAuth()
         self._iscsicli_login('LoginTarget', target, endpoint, auth, num_of_connections)
         self._iscsicli_login('LoginPersistentTarget', target, endpoint, auth, num_of_connections)
         for session in self.get_sessions():
             if session.get_target_endpoint() == endpoint:
                 return session
 
-    def _iscsicli_login(self, login_command, target, endpoint, auth, num_of_connections=1):
+    def _iscsicli_login(self, login_command, target, endpoint, auth=None, num_of_connections=1):
         # Due to a bug only in 2008 multiple sessions isn't handled ok unless initiator name is monitored
         # Therefore we don't use Qlogin, Details:
         # https://social.technet.microsoft.com/Forums/office/en-US/4b2420d6-0f28-4d12-928d-3920896f582d/iscsi-initiator-target-not-reconnecting-on-reboot?forum=winserverfiles
@@ -187,9 +189,11 @@ class WindowsISCSIapi(base.ConnectionManager):
             if "target has already been logged in" not in process.get_stdout():
                 raise RuntimeError(process.get_stdout())
 
-    def login_all(self, target, auth):
+    def login_all(self, target, auth=None):
         ''' login to all endpoint of a target and return the session it achieved
         '''
+        if auth is None:
+            auth = iscsiapi_auth.NoAuth()
         for endpoint in target.get_endpoints():
             self.login(target, endpoint, auth)
         return self.get_sessions(target=target)

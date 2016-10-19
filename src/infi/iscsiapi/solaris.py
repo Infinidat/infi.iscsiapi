@@ -1,5 +1,6 @@
 from infi.execute import execute_assert_success, execute
 from . import base, iscsi_exceptions
+from . import auth as iscsiapi_auth
 from infi.dtypes.iqn import IQN
 from infi.os_info import get_platform_string
 
@@ -160,7 +161,7 @@ class SolarisISCSIapi(base.ConnectionManager):
 
     def _set_auth(self, auth):
         import pexpect
-        if auth.__class__.__name__ == "ChapAuth":
+        if isinstance(auth, iscsiapi_auth.ChapAuth):
             cmd = ['iscsiadm', 'modify', 'initiator-node', '--authentication', 'CHAP']
             self._execute_assert_n_log(cmd)
             cmd = ['iscsiadm', 'modify', 'initiator-node', '--CHAP-name', auth.get_inbound_username()]
@@ -170,14 +171,14 @@ class SolarisISCSIapi(base.ConnectionManager):
             process = pexpect.spawn(cmd)
             process.expect("Enter secret:")
             process.sendline(auth.get_inbound_secret())
-        elif auth.__class__.__name__ == "MutualChapAuth":
+        elif isinstance(auth, iscsiapi_auth.MutualChapAuth):
             cmd = ['iscsiadm', 'modify', 'initiator-node', '--authentication', 'CHAP']
             self._execute_assert_n_log(cmd)
             cmd = ['iscsiadm', 'modify', 'initiator-node', '--CHAP-name', auth.get_inbound_username()]
             self._execute_assert_n_log(cmd)
             cmd = ['iscsiadm', 'modify', 'initiator-node', '--CHAP-secret', auth.get_inbound_secret()]
             self._execute_assert_n_log(cmd)
-        elif auth.__class__.__name__ == "NoAuth":
+        elif isinstance(auth, iscsiapi_auth.NoAuth):
             cmd = ['iscsiadm', 'modify', 'initiator-node', '--authentication', 'none']
             self._execute_assert_n_log(cmd)
 
@@ -212,11 +213,13 @@ class SolarisISCSIapi(base.ConnectionManager):
             for line in process.get_stdout().splitlines():
                 execute(['iscsiadm', 'remove', 'discovery-address', regex.search(line).groupdict()['ip']])
 
-    def login(self, target, endpoint, auth, num_of_connections=1):
+    def login(self, target, endpoint, auth=None, num_of_connections=1):
         raise NotImplemented("In Solaris login is supported only to all available endpoints\n" +
                              "Therefore, login to a single endpoint couldn't be implemented")
 
-    def login_all(self, target, auth):
+    def login_all(self, target, auth=None):
+        if auth is None:
+            auth = iscsiapi_auth.NoAuth()
         logger.info("login_all in Solaris login to all available Targets !")
         self._set_auth(auth)
         self._enable_iscsi_auto_login()

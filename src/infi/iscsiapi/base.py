@@ -110,12 +110,12 @@ class ConnectionManager(object):
         '''
         raise NotImplementedError()
 
-    def login(self, target, endpoint, num_of_connections=1):
+    def login(self, target, endpoint, auth=None, num_of_connections=1):
         '''receives target and endpoint and login to it
         '''
         raise NotImplementedError()
 
-    def login_all(self, target):
+    def login_all(self, target, auth=None):
         '''login to all endpoints of a target and return the session it achieved
         '''
         raise NotImplementedError()
