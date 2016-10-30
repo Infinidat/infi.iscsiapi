@@ -1,0 +1,2 @@
+class NoNetworkAccess(Exception):
+    pass

@@ -1,5 +1,3 @@
-import os
-
 __iscsiapi = None
 __iscsi_software_initiator = None
 
@@ -11,7 +9,7 @@ def get_iscsiapi():
     return __iscsiapi
 
 
-def get_iscsi_software_initator():
+def get_iscsi_software_initiator():
     global __iscsi_software_initiator
     if __iscsi_software_initiator is None:
         __iscsi_software_initiator = _get_platform_specific_iscsi_software_initiator()
@@ -27,6 +25,9 @@ def _get_platform_specific_iscsiapi():
     elif platform.startswith('linux'):
         from . import linux
         return linux.LinuxISCSIapi()
+    elif platform.startswith('solaris'):
+        from . import solaris
+        return solaris.SolarisISCSIapi()
     else:
         raise ImportError("not supported on this platform")
 
@@ -40,5 +41,8 @@ def _get_platform_specific_iscsi_software_initiator():
     elif platform.startswith('linux'):
         from . import linux
         return linux.LinuxSoftwareInitiator()
+    elif platform.startswith('solaris'):
+        from . import solaris
+        return solaris.SolarisSoftwareInitiator()
     else:
         raise ImportError("not supported on this platform")

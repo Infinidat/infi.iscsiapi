@@ -16,9 +16,6 @@ class Session(object):
     def get_target(self):
         return self._target
 
-    def get_hct(self):
-        return self._hct
-
     def get_uid(self):
         return self._uid
 
@@ -38,10 +35,8 @@ class Session(object):
 class Target(object):
     '''class that contains the iscsi connection spec
     '''
-    def __init__(self, endpoints, inbound_chap, outbound_chap, discovery_endpoint, iqn):
+    def __init__(self, endpoints, discovery_endpoint, iqn):
         self._endpoints = endpoints
-        self._inbound_chap = inbound_chap
-        self._outbound_chap = outbound_chap
         self._discovery_endpoint = discovery_endpoint
         self._iqn = iqn
 
@@ -50,12 +45,6 @@ class Target(object):
 
     def get_endpoints(self):
         return self._endpoints
-
-    def get_inbound_chap(self):
-        return self._inbound_chap
-
-    def get_outbound_chap(self):
-        return self._outbound_chap
 
     def get_discovery_endpoint(self):
         return self._discovery_endpoint
@@ -116,17 +105,17 @@ class ConnectionManager(object):
     '''Class that contains the main iscsi methods for connecting iscsi initiator
     to an iscsi target
     '''
-    def discover(self, ip_address, port=3260, outbound_chap=None, inbound_chap=None):
+    def discover(self, ip_address, port=3260):
         '''perform an iscsi discovery to an ip address
         '''
         raise NotImplementedError()
 
-    def login(self, target, endpoint, num_of_connections=1):
+    def login(self, target, endpoint, auth=None, num_of_connections=1):
         '''receives target and endpoint and login to it
         '''
         raise NotImplementedError()
 
-    def login_all(self, target):
+    def login_all(self, target, auth=None):
         '''login to all endpoints of a target and return the session it achieved
         '''
         raise NotImplementedError()
