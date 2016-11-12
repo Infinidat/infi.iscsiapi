@@ -1,6 +1,6 @@
 from infi.execute import execute_assert_success, execute
-from . import base, iscsi_exceptions
 from . import auth as iscsiapi_auth
+from . import base
 from infi.dtypes.iqn import IQN
 from infi.os_info import get_platform_string
 
@@ -12,14 +12,14 @@ class SolarisISCSIapi(base.ConnectionManager):
         try:
             getattr(logger, str(log_level))(log_prefix + "{}".format(cmd))
         except AttributeError as e:
-            logger.error( "logger.{} doesn't exist, {!r}".format(log_level, e))
+            logger.error("logger.{} doesn't exist, {!r}".format(log_level, e))
         return execute_assert_success(cmd)
 
     def _execute_n_log(self, cmd, log_prefix='running: ', log_level='debug'):
         try:
             getattr(logger, str(log_level))(log_prefix + cmd)
         except AttributeError as e:
-            logger.error( "logger.{} doesn't exist, {!r}".format(log_level, e))
+            logger.error("logger.{} doesn't exist, {!r}".format(log_level, e))
         return execute(cmd)
 
     def _set_number_of_connection_to_infinibox(self):
@@ -49,8 +49,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         cmd = ['iscsiadm', 'list', 'discovery-address', '-v']
         process = execute(cmd)
         if process.get_returncode() != 0:
-            raise iscsi_exceptions.NoNetworkAccess("cmd {} failed with {} {}".format(cmd,
-                         process.get_stdout(), process.get_stderr()))
+            return availble_targets
         output = process.get_stdout().splitlines()
         for line_number, line in enumerate(output):
             if re.search(r'Target name:', line):
@@ -84,6 +83,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         cmd = ['iscsiadm', 'list', 'target', '-v']
         process = execute_assert_success(cmd)
         output = process.get_stdout().splitlines()
+        logger.debug(output)
         for line_number, line in enumerate(output):
             if re.search(r'Target: ', line):
                 iqn = line.split()[1]
@@ -153,32 +153,42 @@ class SolarisISCSIapi(base.ConnectionManager):
         cmd = ['iscsiadm', 'modify', 'discovery', '-t', 'enable']
         return self._execute_assert_n_log(cmd)
 
-
     def _disable_iscsi_auto_login(self):
         cmd = ['iscsiadm', 'modify', 'discovery', '-t', 'disable']
         return self._execute_assert_n_log(cmd)
 
-
-    def _set_auth(self, auth):
-        import pexpect
-        if isinstance(auth, iscsiapi_auth.ChapAuth):
-            cmd = ['iscsiadm', 'modify', 'initiator-node', '--authentication', 'CHAP']
-            self._execute_assert_n_log(cmd)
-            cmd = ['iscsiadm', 'modify', 'initiator-node', '--CHAP-name', auth.get_inbound_username()]
-            self._execute_assert_n_log(cmd)
-            # cmd = ['iscsiadm', 'modify', 'initiator-node', '--CHAP-secret']
-            cmd = 'iscsiadm modify initiator-node --CHAP-secret'
+    def _set_auth(self, auth, iqn):
+        def _chap_set_password(cmd, password):
+            # Solaris support chap pass of 12-16 characters
+            # potiontal bug when password reset doesn't work
+            import pexpect
+            from infi.iscsiapi.iscsi_exceptions import ChapPasswordTooLong
+            if len(password) > 16:
+                raise ChapPasswordTooLong
             process = pexpect.spawn(cmd)
             process.expect("Enter secret:")
-            process.sendline(auth.get_inbound_secret())
-        elif isinstance(auth, iscsiapi_auth.MutualChapAuth):
+            process.sendline(password)
+            process.expect("Re-enter secret:")
+            process.sendline(password)
+            logger.debug("password reset finished with exit code {}".format(process.exitstatus))
+        def _set_initiator_chap():
             cmd = ['iscsiadm', 'modify', 'initiator-node', '--authentication', 'CHAP']
             self._execute_assert_n_log(cmd)
             cmd = ['iscsiadm', 'modify', 'initiator-node', '--CHAP-name', auth.get_inbound_username()]
             self._execute_assert_n_log(cmd)
-            cmd = ['iscsiadm', 'modify', 'initiator-node', '--CHAP-secret', auth.get_inbound_secret()]
+            cmd = 'iscsiadm modify initiator-node --CHAP-secret'
+            _chap_set_password(cmd, auth.get_inbound_secret())
+        def _set_target_chap():
+            cmd = ['iscsiadm', 'modify', 'target-param', '--authentication', 'CHAP', str(iqn)]
             self._execute_assert_n_log(cmd)
-        elif isinstance(auth, iscsiapi_auth.NoAuth):
+            cmd = ['iscsiadm', 'modify', 'target-param', '--CHAP-name', auth.get_outbound_username(), str(iqn)]
+            self._execute_assert_n_log(cmd)
+        if auth.__class__.__name__ == "ChapAuth":
+            _set_initiator_chap()
+        elif auth.__class__.__name__ == "MutualChapAuth":
+            _set_initiator_chap()
+            _set_target_chap()
+        elif auth.__class__.__name__ == "NoAuth":
             cmd = ['iscsiadm', 'modify', 'initiator-node', '--authentication', 'none']
             self._execute_assert_n_log(cmd)
 
@@ -204,7 +214,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         '''
         import re
         if target:
-            ip_address, port = self._parse_discovery_address(str(target.get_iqn()))
+            ip_address = target.get_discovery_endpoint().get_ip_address()
             execute(['iscsiadm', 'remove', 'discovery-address', ip_address])
         else:
             cmd = ['iscsiadm', 'list', 'discovery-address']
@@ -221,7 +231,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         if auth is None:
             auth = iscsiapi_auth.NoAuth()
         logger.info("login_all in Solaris login to all available Targets !")
-        self._set_auth(auth)
+        self._set_auth(auth, target.get_iqn())
         self._enable_iscsi_auto_login()
         return self.get_sessions(target=target)
 
@@ -230,8 +240,8 @@ class SolarisISCSIapi(base.ConnectionManager):
 
     def logout_all(self, target):
         logger.warn("Performing logout in Solaris disconnect momentarily all sessions from all targets")
-        self._disable_iscsi_auto_login()
         self.undiscover(target)
+        self._disable_iscsi_auto_login()
         self._enable_iscsi_auto_login()
 
     def get_sessions(self, target=None):
