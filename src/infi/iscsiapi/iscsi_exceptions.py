@@ -3,3 +3,6 @@ class NoNetworkAccess(Exception):
 
 class ChapPasswordTooLong(Exception):
     pass
+
+class WMIConnectionInformationMissing(Exception):
+    pass

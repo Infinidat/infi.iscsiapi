@@ -6,6 +6,7 @@ from infi.dtypes.iqn import IQN
 from infi.wmi import WmiClient
 
 from logging import getLogger
+from time import sleep
 logger = getLogger(__name__)
 
 ISCSI_LOGIN_FLAG_MULTIPATH_DISABLED = 0
@@ -66,13 +67,16 @@ class WindowsISCSIapi(base.ConnectionManager):
     def _return_target(self, ip_address, port):
         endpoints = []
         iqn = None
-        for session in self._get_connectivity_using_wmi():
-            endpoints.append(base.Endpoint(session['dst_ip'], session['dst_port']))
+        sessions = self._get_connectivity_using_wmi()
+        for session in sessions:
             if session['dst_ip'] == ip_address:
                 iqn = IQN(session['iqn'])
         if iqn is None:
             raise RuntimeError("iqn is empty, it means that the discovery address {} didn't returned from the target"
                                .format(ip_address))
+        for session in sessions:
+            if session['iqn'] == iqn:
+                endpoints.append(base.Endpoint(session['dst_ip'], session['dst_port']))
         return base.Target(endpoints, base.Endpoint(ip_address, port), iqn)
 
     def _get_discovery_endpoints(self):
@@ -237,11 +241,12 @@ class WindowsISCSIapi(base.ConnectionManager):
         client = WmiClient('root\\wmi')
         for target in client.execute_query('SELECT * from  MSIscsiInitiator_TargetClass'):
             iqn = target.Properties_.Item('TargetName').Value
-            for portal in target.Properties_.Item('PortalGroups').Value[0].Properties_.Item('Portals').Value:
-                target_connectivity = {'dst_ip': portal.Properties_.Item('Address').Value,
-                                       'dst_port': portal.Properties_.Item('Port').Value, 'iqn': iqn}
-                if target_connectivity not in availble_targets_connectivity:
-                    availble_targets_connectivity.append(target_connectivity)
+            for portal_group in target.Properties_.Item('PortalGroups').Value:
+                for portal in portal_group.Properties_.Item('Portals').Value:
+                    target_connectivity = {'dst_ip': portal.Properties_.Item('Address').Value,
+                                           'dst_port': portal.Properties_.Item('Port').Value, 'iqn': iqn}
+                    if target_connectivity not in availble_targets_connectivity:
+                        availble_targets_connectivity.append(target_connectivity)
         return availble_targets_connectivity
 
     def get_discovered_targets(self):
@@ -255,10 +260,11 @@ class WindowsISCSIapi(base.ConnectionManager):
         for query in client.execute_query('SELECT * from MSIscsiInitiator_TargetClass'):
             endpoints = []
             iqn = query.Properties_.Item('TargetName').Value
-            for portal in query.Properties_.Item('PortalGroups').Value[0].Properties_.Item('Portals').Value:
-                endpoint = base.Endpoint(portal.Properties_.Item('Address').Value, portal.Properties_.Item('Port').Value)
-                if endpoint not in endpoints:
-                    endpoints.append(endpoint)
+            for portal_group in query.Properties_.Item('PortalGroups').Value:
+                for portal in portal_group.Properties_.Item('Portals').Value:
+                    endpoint = base.Endpoint(portal.Properties_.Item('Address').Value, portal.Properties_.Item('Port').Value)
+                    if endpoint not in endpoints:
+                        endpoints.append(endpoint)
 
             regex = re.compile(r'(?P<ip>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\ (?P<port>\d+)')
             discovery_endpoint = regex.search(query.Properties_.Item('DiscoveryMechanism').Value).groupdict()
@@ -278,7 +284,12 @@ class WindowsISCSIapi(base.ConnectionManager):
         # TODO: when InfiniBox will support MCS need to modify this code
         from infi.dtypes.hctl import HCT
         self._refresh_wmi_db()
-        def _get_sessions_of_target(target):
+
+        def _get_sessions_of_target(target, retries=3):
+            from .iscsi_exceptions import WMIConnectionInformationMissing
+            if not retries:
+                raise WMIConnectionInformationMissing()
+
             client = WmiClient('root\\wmi')
             wql = "SELECT * from MSiSCSIInitiator_SessionClass where TargetName='%s'" % str(target.get_iqn())
             query = client.execute_query(wql)
@@ -286,7 +297,12 @@ class WindowsISCSIapi(base.ConnectionManager):
             for session in query:
                 hct = None
                 uid = session.Properties_.Item('SessionId').Value
-                conn_0 = list(session.Properties_.Item('ConnectionInformation').Value)[0]
+                connections = session.Properties_.Item('ConnectionInformation').Value
+                if not connections:
+                    sleep(1)
+                    return _get_sessions_of_target(target, retries-1)
+
+                conn_0 = connections[0]
                 source_ip = conn_0.Properties_.Item('InitiatorAddress').Value
                 source_iqn = session.Properties_.Item('InitiatorName').Value
                 target_address = conn_0.Properties_.Item('TargetAddress').Value
@@ -299,6 +315,7 @@ class WindowsISCSIapi(base.ConnectionManager):
                               devices[0].Properties_.Item('ScsiTargetId').Value)
                 target_sessions.append(base.Session(target, base.Endpoint(target_address, target_port), source_ip, source_iqn, uid, hct))
             return target_sessions
+
         if target:
             return _get_sessions_of_target(target)
         else:
