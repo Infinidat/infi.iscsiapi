@@ -158,7 +158,6 @@ class ISCSIapi_host_TestCase(TestCase):
         target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
         ibox = self.system_sdk
         host = self._create_host("iscsi_testing_host")
-        self._logout_and_verify(target)
         self.assertEqual(str(self._change_auth_on_ibox(host, 'chap')), 'chap')
         auth = iscsi_auth.ChapAuth(INBOUND_USERNAME, INBOUND_SECRET)
         target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
