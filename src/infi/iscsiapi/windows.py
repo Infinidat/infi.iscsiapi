@@ -115,12 +115,12 @@ class WindowsISCSIapi(base.ConnectionManager):
         '''receives target and endpoint and login to it
         '''
         # LoginTarget is not persistent across reboots
-        # LoginPersistentTarget will make sure we connect after reboot but not immediately
+        # PersistentLoginTarget will make sure we connect after reboot but not immediately
         # so we need to call both
         if auth is None:
             auth = iscsiapi_auth.NoAuth()
         self._iscsicli_login('LoginTarget', target, endpoint, auth, num_of_connections)
-        self._iscsicli_login('LoginPersistentTarget', target, endpoint, auth, num_of_connections)
+        self._iscsicli_login('PersistentLoginTarget', target, endpoint, auth, num_of_connections)
         for session in self.get_sessions():
             if session.get_target_endpoint() == endpoint:
                 return session
