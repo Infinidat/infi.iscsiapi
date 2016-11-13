@@ -34,13 +34,11 @@ class ISCSIapi_host_TestCase(TestCase):
     def tearDownClass(cls):
         from infi.vendata.integration_tests.iscsi import purge_iscsi_on_infinibox
         try:
-            pass
             purge_iscsi_on_infinibox(cls.system.get_infinisdk())
         except:
-            pass
             cls.system.purge()
         finally:
-            pass
+            cls.system.purge()
             cls.system.release()
 
     @classmethod
