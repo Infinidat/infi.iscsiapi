@@ -167,3 +167,23 @@ class ISCSIapi_host_TestCase(TestCase):
         auth = iscsi_auth.MutualChapAuth(INBOUND_USERNAME, INBOUND_SECRET, OUTBOUND_USERNAME, OUTBOUND_SECRET)
         sessions = self.iscsiapi.login_all(target, auth)
         self.assertEqual(len(sessions), len(target.get_endpoints()))
+
+    def test_07_chap_login_windows(self):
+        if not get_platform_string().startswith('windows'):
+            raise SkipTest("not available on this platform")
+        self.iscsiapi.undiscover()
+        self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 0)
+        net_space = setup_iscsi_on_infinibox(self.system_sdk)
+        target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
+        ibox = self.system_sdk
+        host = self._create_host("iscsi_testing_host")
+        self.assertEqual(str(self._change_auth_on_ibox(host, 'chap')), 'chap')
+        auth = iscsi_auth.ChapAuth(INBOUND_USERNAME, INBOUND_SECRET)
+        target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
+        sessions = self.iscsiapi.login_all(target, auth)
+        self.assertEqual(len(sessions), len(target.get_endpoints()))
+        self._logout_and_verify(target)
+        self.assertEqual(str(self._change_auth_on_ibox(host, 'mutual_chap')), 'mutual_chap')
+        auth = iscsi_auth.MutualChapAuth(INBOUND_USERNAME, INBOUND_SECRET, str(self.iscsiapi.get_source_iqn()), OUTBOUND_SECRET)
+        sessions = self.iscsiapi.login_all(target, auth)
+        self.assertEqual(len(sessions), len(target.get_endpoints()))

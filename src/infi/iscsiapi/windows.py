@@ -130,6 +130,24 @@ class WindowsISCSIapi(base.ConnectionManager):
                 return session
 
     def _iscsicli_login(self, login_command, target, endpoint, auth=None, num_of_connections=1):
+        def _remove_outbound_secret():
+            cmd = ['iscsicli', 'CHAPSecret', '*']
+            execute(cmd)
+
+        auth_type = self._return_auth_type(auth)
+        if auth_type == ISCSI_CHAP_AUTH_TYPE:
+            username = auth.get_inbound_username()
+            password = auth.get_inbound_secret()
+            _remove_outbound_secret()
+        elif auth_type == ISCSI_MUTUAL_CHAP_AUTH_TYPE:
+            username = auth.get_inbound_username()
+            password = auth.get_inbound_secret()
+            cmd = ['iscsicli', 'CHAPSecret', auth.get_outbound_secret()]
+            execute(cmd)
+        elif auth_type == ISCSI_NO_AUTH_TYPE:
+            username = '*'
+            password = '*'
+            _remove_outbound_secret()
         # Due to a bug only in 2008 multiple sessions isn't handled ok unless initiator name is monitored
         # Therefore we don't use Qlogin, Details:
         # https://social.technet.microsoft.com/Forums/office/en-US/4b2420d6-0f28-4d12-928d-3920896f582d/iscsi-initiator-target-not-reconnecting-on-reboot?forum=winserverfiles
@@ -160,13 +178,6 @@ class WindowsISCSIapi(base.ConnectionManager):
                 {DefaultTime2Retain} {Username} {Password} {AuthType} {Key}
                 {Mapping_Count}'''
 
-        if self._return_auth_type(auth) != ISCSI_NO_AUTH_TYPE:
-            username = auth.get_inbound_username()
-            password = auth.get_inbound_secret()
-        else:
-            username = '*'
-            password = '*'
-
         args = command.format(login_command, TargetName=target.get_iqn(),
                               ReportToPNP='t',  # If the value is T or t then the LUN is exposed as a device
                               TargetPortalAddress=endpoint.get_ip_address(),
@@ -182,7 +193,7 @@ class WindowsISCSIapi(base.ConnectionManager):
                               DefaultTime2Retain=0,
                               Username=username,  # the iSCSI initiator service will use the initiator node name as the CHAP username
                               Password=password,  # The initiator will use this secret to compute a hash value based on the challenge sent by the target
-                              AuthType=self._return_auth_type(auth),
+                              AuthType=auth_type,
                               Key=0,
                               Mapping_Count=0)
         logger.info("running iscsicli LoginTarget {!r}".format(args))
