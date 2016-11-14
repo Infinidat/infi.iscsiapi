@@ -151,6 +151,8 @@ class LinuxISCSIapi(base.ConnectionManager):
             self._update_node_parameter('node.session.auth.authmethod', 'CHAP')
             self._update_node_parameter('node.session.auth.username', auth.get_inbound_username())
             self._update_node_parameter('node.session.auth.password', auth.get_inbound_secret())
+            self._update_node_parameter('node.session.auth.username_in', '')
+            self._update_node_parameter('node.session.auth.password_in', '')
         elif isinstance(auth, iscsiapi_auth.MutualChapAuth):
             self._update_node_parameter('node.session.auth.authmethod', 'CHAP')
             self._update_node_parameter('node.session.auth.username', auth.get_inbound_username())
