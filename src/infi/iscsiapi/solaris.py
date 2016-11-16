@@ -83,7 +83,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         cmd = ['iscsiadm', 'list', 'target', '-v']
         process = execute_assert_success(cmd)
         output = process.get_stdout().splitlines()
-        logger.debug(output)
+        logger.debug([line.strip() for line in output])
         for line_number, line in enumerate(output):
             if re.search(r'Target: ', line):
                 iqn = line.split()[1]
@@ -195,6 +195,7 @@ class SolarisISCSIapi(base.ConnectionManager):
     def discover(self, ip_address, port=3260):
         '''initiate discovery and returns a list of dicts which contain all available targets
         '''
+        from .iscsi_exceptions import DiscoveryFailed
         self._enable_iscsi_discovery()
         endpoints = []
         args = ['iscsiadm', 'add', 'discovery-address', str(ip_address) + ':' + str(port)]
@@ -203,6 +204,9 @@ class SolarisISCSIapi(base.ConnectionManager):
         for target_connectivity in self._parse_discovered_targets():
             if target_connectivity['dst_ip'] == ip_address:
                 iqn = target_connectivity['iqn']
+                break
+        else:
+            raise DiscoveryFailed()
         for target_connectivity in self._parse_discovered_targets():
             if iqn == target_connectivity['iqn']:
                 endpoints.append(base.Endpoint(target_connectivity['dst_ip'], target_connectivity['dst_port']))

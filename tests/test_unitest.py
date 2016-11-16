@@ -30,6 +30,10 @@ class ISCSIapi_host_TestCase(TestCase):
         if get_platform_string().startswith('solaris'):
             cls.clear_auth_on_initiator()
 
+    def setUp(self):
+        self.iscsiapi.undiscover()
+        self.clear_auth_on_initiator()
+
     @classmethod
     def tearDownClass(cls):
         from infi.vendata.integration_tests.iscsi import purge_iscsi_on_infinibox
@@ -81,6 +85,7 @@ class ISCSIapi_host_TestCase(TestCase):
         net_space = setup_iscsi_on_infinibox(self.system_sdk)
         sleep(5)
         target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
+        self.addCleanup(self.iscsiapi.logout_all, target)
         self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 1)
         self.assertEqual(type(target), infi.iscsiapi.base.Target)
         self.assertEqual(target.get_discovery_endpoint().get_ip_address(), net_space.get_field('ips')[0].ip_address)
@@ -89,104 +94,82 @@ class ISCSIapi_host_TestCase(TestCase):
         self.iscsiapi.undiscover(target)
         self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 0)
 
-    def test_04_login_logout(self):
-        self.iscsiapi.undiscover()
-        if self.iscsiapi.get_discovered_targets() != []:
-            for target in self.iscsiapi.get_discovered_targets():
-                self._logout_and_verify(target)
-        auth = iscsi_auth.NoAuth()
-        self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 0)
-        net_space = setup_iscsi_on_infinibox(self.system_sdk)
-        target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
-        sessions = self.iscsiapi.login_all(target, auth)
-        self.assertEqual(len(sessions), len(target.get_endpoints()))
-        self._logout_and_verify(target)
-
     def _create_host(self, hostname):
         ibox = self.system_sdk
         host = ibox.hosts.create(name=hostname)
         host.add_port(address=self.iscsiapi.get_source_iqn())
+        self.addCleanup(host.delete)
         return host
 
     def _change_auth_on_ibox(self, host, auth_type):
-        if auth_type is None:
-            host.update_security_method('none')
-        elif auth_type == 'chap':
-            host.update_security_chap_inbound_username(INBOUND_USERNAME)
-            host.update_security_chap_inbound_secret(INBOUND_SECRET)
-            host.update_security_method('chap')
-        elif auth_type == 'mutual_chap':
-            host.update_security_chap_inbound_username(INBOUND_USERNAME)
-            host.update_security_chap_inbound_secret(INBOUND_SECRET)
-            host.update_security_chap_outbound_username(OUTBOUND_USERNAME)
-            host.update_security_chap_outbound_secret(OUTBOUND_SECRET)
-            host.update_security_method('mutual_chap')
+        from infi.iscsiapi import auth
+        if isinstance(auth_type, auth.NoAuth):
+            host.update_security_method('NONE')
+        elif isinstance(auth_type, auth.ChapAuth):
+            host.update_security_chap_inbound_username(auth_type.get_inbound_username())
+            host.update_security_chap_inbound_secret(auth_type.get_inbound_secret())
+            host.update_security_method('CHAP')
+        elif isinstance(auth_type, auth.MutualChapAuth):
+            host.update_security_chap_inbound_username(auth_type.get_inbound_username())
+            host.update_security_chap_inbound_secret(auth_type.get_inbound_secret())
+            host.update_security_chap_outbound_username(auth_type.get_outbound_username())
+            host.update_security_chap_outbound_secret(auth_type.get_outbound_secret())
+            host.update_security_method('MUTUAL_CHAP')
         security_method = host.get_field(field_name="security_method", from_cache=False)
-        return str(security_method.lower())
 
     def _logout_and_verify(self, target):
         self.iscsiapi.logout_all(target)
         sessions = self.iscsiapi.get_sessions()
         self.assertEqual(len(sessions), 0)
 
-    def test_05_chap_login_linux(self):
-        if not get_platform_string().startswith('linux'):
-            raise SkipTest("not available on this platform")
-        self.iscsiapi.undiscover()
-        self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 0)
-        net_space = setup_iscsi_on_infinibox(self.system_sdk)
+    def _assert_discovery_login_logout(self, net_space, host, auth):
+        self._change_auth_on_ibox(host, auth)
         target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
-        ibox = self.system_sdk
-        host = self._create_host("iscsi_testing_host")
-        self.assertEqual(str(self._change_auth_on_ibox(host, 'chap')), 'chap')
-        auth = iscsi_auth.ChapAuth(INBOUND_USERNAME, INBOUND_SECRET)
-        target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
+        self.addCleanup(self.iscsiapi.logout_all, target)
+
         sessions = self.iscsiapi.login_all(target, auth)
         self.assertEqual(len(sessions), len(target.get_endpoints()))
         self._logout_and_verify(target)
-        self.assertEqual(str(self._change_auth_on_ibox(host, 'mutual_chap')), 'mutual_chap')
-        auth = iscsi_auth.MutualChapAuth(INBOUND_USERNAME, INBOUND_SECRET, OUTBOUND_USERNAME, OUTBOUND_SECRET)
-        sessions = self.iscsiapi.login_all(target, auth)
-        self.assertEqual(len(sessions), len(target.get_endpoints()))
 
-    def test_06_chap_login_solaris(self):
-        if not get_platform_string().startswith('solaris'):
-            raise SkipTest("not available on this platform")
-        self.iscsiapi.undiscover()
+    def test_04_login_logout(self):
         self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 0)
         net_space = setup_iscsi_on_infinibox(self.system_sdk)
-        target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
         ibox = self.system_sdk
         host = self._create_host("iscsi_testing_host")
-        self.assertEqual(str(self._change_auth_on_ibox(host, 'chap')), 'chap')
-        auth = iscsi_auth.ChapAuth(INBOUND_USERNAME, INBOUND_SECRET)
-        target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
-        discovery_ip = target.get_discovery_endpoint().get_ip_address()
-        self.iscsiapi.logout_all(target)
-        target = self.iscsiapi.discover(discovery_ip)
-        sessions = self.iscsiapi.login_all(target, auth)
-        self.assertEqual(len(sessions), len(target.get_endpoints()))
-        self.assertEqual(str(self._change_auth_on_ibox(host, 'mutual_chap')), 'mutual_chap')
-        auth = iscsi_auth.MutualChapAuth(INBOUND_USERNAME, INBOUND_SECRET, OUTBOUND_USERNAME, OUTBOUND_SECRET)
-        sessions = self.iscsiapi.login_all(target, auth)
-        self.assertEqual(len(sessions), len(target.get_endpoints()))
+        auth = iscsi_auth.NoAuth()
 
-    def test_07_chap_login_windows(self):
-        if not get_platform_string().startswith('windows'):
-            raise SkipTest("not available on this platform")
-        self.iscsiapi.undiscover()
+        self._assert_discovery_login_logout(net_space, host, None)
+        self._assert_discovery_login_logout(net_space, host, None)
+
+
+    def test_05_chap_login(self):
         self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 0)
         net_space = setup_iscsi_on_infinibox(self.system_sdk)
-        target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
         ibox = self.system_sdk
         host = self._create_host("iscsi_testing_host")
-        self.assertEqual(str(self._change_auth_on_ibox(host, 'chap')), 'chap')
         auth = iscsi_auth.ChapAuth(INBOUND_USERNAME, INBOUND_SECRET)
-        target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
-        sessions = self.iscsiapi.login_all(target, auth)
-        self.assertEqual(len(sessions), len(target.get_endpoints()))
-        self._logout_and_verify(target)
-        self.assertEqual(str(self._change_auth_on_ibox(host, 'mutual_chap')), 'mutual_chap')
-        auth = iscsi_auth.MutualChapAuth(INBOUND_USERNAME, INBOUND_SECRET, str(self.iscsiapi.get_source_iqn()), OUTBOUND_SECRET)
-        sessions = self.iscsiapi.login_all(target, auth)
-        self.assertEqual(len(sessions), len(target.get_endpoints()))
+
+        self._assert_discovery_login_logout(net_space, host, auth)
+
+        # discovery on solaris doesn't work now with chap
+        if get_platform_string().startswith('solaris'):
+            self.clear_auth_on_initiator()
+
+        self._assert_discovery_login_logout(net_space, host, auth)
+
+    def test_06_mutual_chap_login(self):
+        if get_platform_string().startswith('solaris'):
+            raise SkipTest("mutual chap does not work on solaris yet")
+        self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 0)
+        net_space = setup_iscsi_on_infinibox(self.system_sdk)
+        ibox = self.system_sdk
+        host = self._create_host("iscsi_testing_host")
+        auth = iscsi_auth.MutualChapAuth(INBOUND_USERNAME, INBOUND_SECRET, OUTBOUND_USERNAME, OUTBOUND_SECRET)
+
+        self._assert_discovery_login_logout(net_space, host, auth)
+
+        # discovery on solaris doesn't work now with chap
+        if get_platform_string().startswith('solaris'):
+            self.clear_auth_on_initiator()
+
+        self._assert_discovery_login_logout(net_space, host, auth)

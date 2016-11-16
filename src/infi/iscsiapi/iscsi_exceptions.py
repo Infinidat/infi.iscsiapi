@@ -6,3 +6,6 @@ class ChapPasswordTooLong(Exception):
 
 class WMIConnectionInformationMissing(Exception):
     pass
+
+class DiscoveryFailed(Exception):
+    pass
