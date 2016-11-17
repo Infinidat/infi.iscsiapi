@@ -145,58 +145,74 @@ class SolarisISCSIapi(base.ConnectionManager):
         execute_assert_success(['iscsiadm', 'modify', 'initiator-node', '-N', iqn])
         logger.info("iqn was replaced from {} to {}".format(old_iqn, iqn))
 
-    def _enable_iscsi_discovery(self):
-        cmd = ['iscsiadm', 'modify', 'discovery', '-s', 'enable']
-        return self._execute_assert_n_log(cmd)
-
     def _enable_iscsi_auto_login(self):
-        cmd = ['iscsiadm', 'modify', 'discovery', '-t', 'enable']
+        cmd = ['iscsiadm', 'modify', 'discovery', '--sendtargets', 'enable']
         return self._execute_assert_n_log(cmd)
 
     def _disable_iscsi_auto_login(self):
-        cmd = ['iscsiadm', 'modify', 'discovery', '-t', 'disable']
+        cmd = ['iscsiadm', 'modify', 'discovery', '--sendtargets', 'disable']
         return self._execute_assert_n_log(cmd)
 
+    def _modify_target(self, key, value, iqn):
+        cmd = ['iscsiadm', 'modify', 'target-param', key, value, str(iqn)]
+        self._execute_assert_n_log(cmd)
+
+    def _clear_auth(self):
+        cmd = ['iscsiadm', 'modify', 'initiator-node', '--authentication', 'none']
+        self._execute_assert_n_log(cmd)
+
+        for line in self._execute_assert_n_log(['iscsiadm', 'list', 'target-param']).get_stdout().splitlines():
+            if not line.startswith('Target'):
+                return
+            iqn = line.strip().split()[1]
+            self._modify_target('--bi-directional-authentication', 'disable', iqn)
+            self._modify_target('--authentication', 'none', iqn)
+
+    def _chap_set_password(self, cmd, password):
+        # Solaris support chap pass of 12-16 characters
+        # potiontal bug when password reset doesn't work
+        import pexpect
+        from infi.iscsiapi.iscsi_exceptions import ChapPasswordTooLong
+        if len(password) > 16:
+            raise ChapPasswordTooLong
+        logger.debug("running: {}".format(cmd))
+        process = pexpect.spawn(cmd)
+        process.expect("Enter secret:")
+        process.sendline(password)
+        process.expect("Re-enter secret:")
+        process.sendline(password)
+        logger.debug("password reset finished with exit code {}".format(process.exitstatus))
+
     def _set_auth(self, auth, iqn):
-        def _chap_set_password(cmd, password):
-            # Solaris support chap pass of 12-16 characters
-            # potiontal bug when password reset doesn't work
-            import pexpect
-            from infi.iscsiapi.iscsi_exceptions import ChapPasswordTooLong
-            if len(password) > 16:
-                raise ChapPasswordTooLong
-            process = pexpect.spawn(cmd)
-            process.expect("Enter secret:")
-            process.sendline(password)
-            process.expect("Re-enter secret:")
-            process.sendline(password)
-            logger.debug("password reset finished with exit code {}".format(process.exitstatus))
-        def _set_initiator_chap():
-            cmd = ['iscsiadm', 'modify', 'initiator-node', '--authentication', 'CHAP']
+        def _set_unidirectional_chap():
+            self._modify_target('--bi-directional-authentication', 'disable', iqn)
+            self._modify_target('--authentication', 'chap', iqn)
+            cmd = ['iscsiadm', 'modify', 'initiator-node', '--authentication', 'chap']
             self._execute_assert_n_log(cmd)
             cmd = ['iscsiadm', 'modify', 'initiator-node', '--CHAP-name', auth.get_inbound_username()]
             self._execute_assert_n_log(cmd)
             cmd = 'iscsiadm modify initiator-node --CHAP-secret'
-            _chap_set_password(cmd, auth.get_inbound_secret())
-        def _set_target_chap():
-            cmd = ['iscsiadm', 'modify', 'target-param', '--authentication', 'CHAP', str(iqn)]
-            self._execute_assert_n_log(cmd)
-            cmd = ['iscsiadm', 'modify', 'target-param', '--CHAP-name', auth.get_outbound_username(), str(iqn)]
-            self._execute_assert_n_log(cmd)
-        if auth.__class__.__name__ == "ChapAuth":
-            _set_initiator_chap()
-        elif auth.__class__.__name__ == "MutualChapAuth":
-            _set_initiator_chap()
-            _set_target_chap()
-        elif auth.__class__.__name__ == "NoAuth":
-            cmd = ['iscsiadm', 'modify', 'initiator-node', '--authentication', 'none']
-            self._execute_assert_n_log(cmd)
+            self._chap_set_password(cmd, auth.get_inbound_secret())
+
+        def _set_bidirectional_chap():
+            self._modify_target('--bi-directional-authentication', 'enable', iqn)
+            self._modify_target('--CHAP-name', auth.get_outbound_username(), iqn)
+            cmd = 'iscsiadm modify target-param --CHAP-secret {}'.format(iqn)
+            self._chap_set_password(cmd, auth.get_outbound_secret())
+
+        if isinstance(auth, iscsiapi_auth.ChapAuth):
+            _set_unidirectional_chap()
+        elif isinstance(auth, iscsiapi_auth.MutualChapAuth):
+            _set_unidirectional_chap()
+            _set_bidirectional_chap()
+        elif isinstance(auth, iscsiapi_auth.NoAuth):
+            self._modify_target('--bi-directional-authentication', 'disable', iqn)
+            self._modify_target('--authentication', 'none', iqn)
 
     def discover(self, ip_address, port=3260):
         '''initiate discovery and returns a list of dicts which contain all available targets
         '''
         from .iscsi_exceptions import DiscoveryFailed
-        self._enable_iscsi_discovery()
         endpoints = []
         args = ['iscsiadm', 'add', 'discovery-address', str(ip_address) + ':' + str(port)]
         logger.info("running {}".format(args))

@@ -4,24 +4,26 @@ from infi.vendata.integration_tests.iscsi import setup_iscsi_network_interface_o
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from unittest import SkipTest
 from infi.os_info import get_platform_string
+from subprocess import check_output
 from time import sleep
 from infi.iscsiapi import auth as iscsi_auth
-
-# reduce urlib error
-import requests
-requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+from infi.pyutils.contexts import contextmanager
+from logging import getLogger
 
 INBOUND_USERNAME = "chapuser"
 INBOUND_SECRET = "chappass123467"
 OUTBOUND_USERNAME = "chap_user2"
 OUTBOUND_SECRET = "PASS-chap_8&1231"
 
-class ISCSIapi_host_TestCase(TestCase):
 
+logger = getLogger(__name__)
+
+
+class ISCSIapi_host_TestCase(TestCase):
     @classmethod
     def setUpClass(cls):
         cls.skip_if_not_available()
-        cls.system = cls.system_factory.allocate_infinidat_system(labels=(['iscsi']))
+        cls.system = cls.system_factory.allocate_infinidat_system(labels=(['ci-ready', 'iscsi']))
         cls.system.purge()
         cls.system_sdk = cls.system.get_infinisdk()
         cls.system_sdk.login()
@@ -30,8 +32,20 @@ class ISCSIapi_host_TestCase(TestCase):
         if get_platform_string().startswith('solaris'):
             cls.clear_auth_on_initiator()
 
+    @contextmanager
+    def another_system_context(self):
+        system = self.system_factory.allocate_infinidat_system(labels=(['ci-ready', 'iscsi']))
+        system.purge()
+        system.get_infinisdk().login()
+        try:
+            yield system
+        finally:
+            system.purge()
+            system.release()
+
     def setUp(self):
         self.addCleanup(self._cleanup_iscsi_connections)
+        self.addCleanup(self.clear_auth_on_initiator)
 
     def _cleanup_iscsi_connections(self):
         self.iscsiapi.undiscover()
@@ -42,8 +56,6 @@ class ISCSIapi_host_TestCase(TestCase):
         from infi.vendata.integration_tests.iscsi import purge_iscsi_on_infinibox
         try:
             purge_iscsi_on_infinibox(cls.system.get_infinisdk())
-        except:
-            cls.system.purge()
         finally:
             cls.system.purge()
             cls.system.release()
@@ -60,7 +72,7 @@ class ISCSIapi_host_TestCase(TestCase):
         '''temporery work around for discovery with chap'''
         if get_platform_string().startswith('solaris'):
             iscsi = infi.iscsiapi.get_iscsiapi()
-            iscsi._set_auth(iscsi_auth.NoAuth(), "bla")
+            iscsi._clear_auth()
 
     def test_01_iscsi_software(self):
         iscsi_sw = infi.iscsiapi.get_iscsi_software_initiator()
@@ -86,7 +98,6 @@ class ISCSIapi_host_TestCase(TestCase):
         self.iscsiapi.undiscover()
         self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 0)
         net_space = setup_iscsi_on_infinibox(self.system_sdk)
-        sleep(5)
         target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
         self.addCleanup(self.iscsiapi.logout_all, target)
         self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 1)
@@ -97,11 +108,12 @@ class ISCSIapi_host_TestCase(TestCase):
         self.iscsiapi.undiscover(target)
         self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 0)
 
-    def _create_host(self, hostname):
-        ibox = self.system_sdk
+    def _create_host(self, hostname, sdk=None):
+        ibox = sdk or self.system_sdk
         host = ibox.hosts.create(name=hostname)
         host.add_port(address=self.iscsiapi.get_source_iqn())
-        self.addCleanup(host.delete)
+        if sdk is None:
+            self.addCleanup(host.delete)
         return host
 
     def _change_auth_on_ibox(self, host, auth_type):
@@ -120,59 +132,95 @@ class ISCSIapi_host_TestCase(TestCase):
             host.update_security_method('MUTUAL_CHAP')
         security_method = host.get_field(field_name="security_method", from_cache=False)
 
-    def _logout_and_verify(self, target):
-        self.iscsiapi.logout_all(target)
-        sessions = self.iscsiapi.get_sessions()
-        self.assertEqual(len(sessions), 0)
+    def _solaris_debug_dump(self):
+        commands = [
+                    "iscsiadm list initiator-node 2>&1 || true",
+                    "iscsiadm list discovery 2>&1 || true",
+                    "iscsiadm list target-param -v 2>&1 || true",
+                    "iscsiadm list discovery-address -v 2>&1 || true",
+                    "iscsiadm list target -v 2>&1 || true",
+                    ]
+        for command in commands:
+            logger.debug(command)
+            logger.debug(check_output(command, shell=True))
 
-    def _assert_discovery_login_logout(self, net_space, host, auth):
+    def _assert_number_of_action_sessions(self, target, expected):
+        if get_platform_string().startswith('solaris'):
+            self._solaris_debug_dump()
+        actual = len(self.iscsiapi.get_sessions(target))
+        message = 'We expected {0} connections to target {1} but found {2}'.format(expected, target.get_iqn(), actual)
+        self.assertEqual(actual, expected, message)
+
+    @contextmanager
+    def _iscsi_connection_context(self, net_space, host, auth):
         self._change_auth_on_ibox(host, auth)
         target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
         self.addCleanup(self.iscsiapi.logout_all, target)
 
-        sessions = self.iscsiapi.login_all(target, auth)
-        self.assertEqual(len(sessions), len(target.get_endpoints()))
-        self._logout_and_verify(target)
+        self.iscsiapi.login_all(target, auth)
+        self._assert_number_of_action_sessions(target, len(target.get_endpoints()))
 
-    def test_04_login_logout(self):
-        self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 0)
+        try:
+            yield target
+        finally:
+            self.iscsiapi.logout_all(target)
+            self._assert_number_of_action_sessions(target, 0)
+
+    def _assert_discovery_login_logout(self, net_space, host, auth):
+        with self._iscsi_connection_context(net_space, host, auth) as target:
+            pass
+
+    def _assert_login_to_two_systems(self, net_space, host, auth):
+        with self.another_system_context() as system:
+            sdk = system.get_infinisdk()
+            another_net_space = setup_iscsi_on_infinibox(sdk)
+            another_host = self._create_host("another_host", sdk)
+            with self._iscsi_connection_context(net_space, host, auth) as target1:
+                with self._iscsi_connection_context(another_net_space, another_host, auth) as target2:
+                    pass
+
+    def test_04_login(self):
         net_space = setup_iscsi_on_infinibox(self.system_sdk)
         ibox = self.system_sdk
         host = self._create_host("iscsi_testing_host")
         auth = iscsi_auth.NoAuth()
 
-        self._assert_discovery_login_logout(net_space, host, None)
-        self._assert_discovery_login_logout(net_space, host, None)
-
+        self._assert_discovery_login_logout(net_space, host, auth)
+        self._assert_discovery_login_logout(net_space, host, auth)
+        self._assert_login_to_two_systems(net_space, host, auth)
 
     def test_05_chap_login(self):
-        self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 0)
         net_space = setup_iscsi_on_infinibox(self.system_sdk)
         ibox = self.system_sdk
         host = self._create_host("iscsi_testing_host")
         auth = iscsi_auth.ChapAuth(INBOUND_USERNAME, INBOUND_SECRET)
 
         self._assert_discovery_login_logout(net_space, host, auth)
-
-        # discovery on solaris doesn't work now with chap
-        if get_platform_string().startswith('solaris'):
-            self.clear_auth_on_initiator()
-
+        self.clear_auth_on_initiator()
         self._assert_discovery_login_logout(net_space, host, auth)
 
-    def test_06_mutual_chap_login(self):
         if get_platform_string().startswith('solaris'):
-            raise SkipTest("mutual chap does not work on solaris yet")
-        self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 0)
+            # HOSTDEV-2549 logging in to two systems with chap on solaris does not work
+            return
+        self.clear_auth_on_initiator()
+        self._assert_login_to_two_systems(net_space, host, auth)
+
+    def test_06_mutual_chap_login(self):
         net_space = setup_iscsi_on_infinibox(self.system_sdk)
         ibox = self.system_sdk
         host = self._create_host("iscsi_testing_host")
         auth = iscsi_auth.MutualChapAuth(INBOUND_USERNAME, INBOUND_SECRET, OUTBOUND_USERNAME, OUTBOUND_SECRET)
 
         self._assert_discovery_login_logout(net_space, host, auth)
-
-        # discovery on solaris doesn't work now with chap
-        if get_platform_string().startswith('solaris'):
-            self.clear_auth_on_initiator()
-
+        self.clear_auth_on_initiator()
         self._assert_discovery_login_logout(net_space, host, auth)
+
+        if get_platform_string().startswith('solaris'):
+            # HOSTDEV-2549 logging in to two systems with chap on solaris does not work
+            return
+        self.clear_auth_on_initiator()
+        self._assert_login_to_two_systems(net_space, host, auth)
+
+
+import requests
+requests.packages.urllib3.disable_warnings()
