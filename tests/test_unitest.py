@@ -199,9 +199,6 @@ class ISCSIapi_host_TestCase(TestCase):
         self.clear_auth_on_initiator()
         self._assert_discovery_login_logout(net_space, host, auth)
 
-        if get_platform_string().startswith('solaris'):
-            # HOSTDEV-2549 logging in to two systems with chap on solaris does not work
-            return
         self.clear_auth_on_initiator()
         self._assert_login_to_two_systems(net_space, host, auth)
 
@@ -215,9 +212,6 @@ class ISCSIapi_host_TestCase(TestCase):
         self.clear_auth_on_initiator()
         self._assert_discovery_login_logout(net_space, host, auth)
 
-        if get_platform_string().startswith('solaris'):
-            # HOSTDEV-2549 logging in to two systems with chap on solaris does not work
-            return
         self.clear_auth_on_initiator()
         self._assert_login_to_two_systems(net_space, host, auth)
 
