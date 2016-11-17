@@ -31,7 +31,7 @@ class ISCSIapi_host_TestCase(TestCase):
             cls.clear_auth_on_initiator()
 
     def setUp(self):
-        self.addCleanup(self._cleanup_iscsi_connections())
+        self.addCleanup(self._cleanup_iscsi_connections)
 
     def _cleanup_iscsi_connections(self):
         self.iscsiapi.undiscover()
