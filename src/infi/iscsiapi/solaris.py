@@ -10,14 +10,14 @@ logger = getLogger(__name__)
 class SolarisISCSIapi(base.ConnectionManager):
     def _execute_assert_n_log(self, cmd, log_prefix='running: ', log_level='debug'):
         try:
-            getattr(logger, str(log_level))(log_prefix + "{}".format(cmd))
+            getattr(logger, str(log_level))(log_prefix + "{}".format(cmd if isinstance(cmd, basestring) else ' '.join(cmd)))
         except AttributeError as e:
             logger.error("logger.{} doesn't exist, {!r}".format(log_level, e))
         return execute_assert_success(cmd)
 
     def _execute_n_log(self, cmd, log_prefix='running: ', log_level='debug'):
         try:
-            getattr(logger, str(log_level))(log_prefix + cmd)
+            getattr(logger, str(log_level))(log_prefix + (cmd if isinstance(cmd, basestring) else ' '.join(cmd)))
         except AttributeError as e:
             logger.error("logger.{} doesn't exist, {!r}".format(log_level, e))
         return execute(cmd)
@@ -43,11 +43,11 @@ class SolarisISCSIapi(base.ConnectionManager):
         import re
         availble_targets = []
         cmd = ['iscsiadm', 'list', 'discovery-address']
-        process = execute_assert_success(cmd)
+        process = self._execute_assert_n_log(cmd)
         if len(list(process.get_stdout())) == 0:
             return availble_targets
         cmd = ['iscsiadm', 'list', 'discovery-address', '-v']
-        process = execute(cmd)
+        process = self._execute_n_log(cmd)
         if process.get_returncode() != 0:
             return availble_targets
         output = process.get_stdout().splitlines()
@@ -68,7 +68,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         discovery_addresses = []
         _ = IQN(iqn)  # make sure it's valid iqn
         cmd = ['iscsiadm', 'list', 'discovery-address']
-        process = execute_assert_success(cmd)
+        process = self._execute_assert_n_log(cmd)
         regex = re.compile('Discovery Address: 'r'(?P<ip>\d+\.\d+\.\d+\.\d+)\:(?P<port>\d+)')
         for line in process.get_stdout().splitlines():
             discovery_addresses.append(regex.search(line).groupdict()['ip'])
@@ -81,7 +81,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         import re
         availble_sessions = []
         cmd = ['iscsiadm', 'list', 'target', '-v']
-        process = execute_assert_success(cmd)
+        process = self._execute_assert_n_log(cmd)
         output = process.get_stdout().splitlines()
         logger.debug([line.strip() for line in output])
         for line_number, line in enumerate(output):
@@ -126,7 +126,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         '''return infi.dtypes.iqn type iqn if iscsi initiator file exists
         '''
         import re
-        process = execute_assert_success(['iscsiadm', 'list', 'initiator-node'])
+        process = self._execute_assert_n_log(['iscsiadm', 'list', 'initiator-node'])
         iqn_line = process.get_stdout().splitlines()[0]
         if re.search(r'Initiator node name', iqn_line):
             iqn = iqn_line.split('Initiator node name: ')[1]
@@ -215,8 +215,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         from .iscsi_exceptions import DiscoveryFailed
         endpoints = []
         args = ['iscsiadm', 'add', 'discovery-address', str(ip_address) + ':' + str(port)]
-        logger.info("running {}".format(args))
-        execute_assert_success(args)
+        self._execute_assert_n_log(args)
         for target_connectivity in self._parse_discovered_targets():
             if target_connectivity['dst_ip'] == ip_address:
                 iqn = target_connectivity['iqn']
@@ -235,13 +234,13 @@ class SolarisISCSIapi(base.ConnectionManager):
         import re
         if target:
             ip_address = target.get_discovery_endpoint().get_ip_address()
-            execute(['iscsiadm', 'remove', 'discovery-address', ip_address])
+            self._execute_n_log(['iscsiadm', 'remove', 'discovery-address', ip_address])
         else:
             cmd = ['iscsiadm', 'list', 'discovery-address']
-            process = execute_assert_success(cmd)
+            process = self._execute_assert_n_log(cmd)
             regex = re.compile('Discovery Address: 'r'(?P<ip>\d+\.\d+\.\d+\.\d+)\:(?P<port>\d+)')
             for line in process.get_stdout().splitlines():
-                execute(['iscsiadm', 'remove', 'discovery-address', regex.search(line).groupdict()['ip']])
+                self._execute_n_log(['iscsiadm', 'remove', 'discovery-address', regex.search(line).groupdict()['ip']])
 
     def login(self, target, endpoint, auth=None, num_of_connections=1):
         raise NotImplemented("In Solaris login is supported only to all available endpoints\n" +
