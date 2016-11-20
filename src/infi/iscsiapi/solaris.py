@@ -157,6 +157,10 @@ class SolarisISCSIapi(base.ConnectionManager):
         cmd = ['iscsiadm', 'modify', 'target-param', key, value, str(iqn)]
         self._execute_assert_n_log(cmd)
 
+    def _modify_initiator(self, key, value):
+        cmd = ['iscsiadm', 'modify', 'initiator-node', key, value]
+        self._execute_assert_n_log(cmd)
+
     def _clear_auth(self):
         cmd = ['iscsiadm', 'modify', 'initiator-node', '--authentication', 'none']
         self._execute_assert_n_log(cmd)
@@ -187,12 +191,8 @@ class SolarisISCSIapi(base.ConnectionManager):
         def _set_unidirectional_chap():
             self._modify_target('--bi-directional-authentication', 'disable', iqn)
             self._modify_target('--authentication', 'chap', iqn)
-            cmd = ['iscsiadm', 'modify', 'initiator-node', '--authentication', 'chap']
-            self._execute_assert_n_log(cmd)
-            cmd = ['iscsiadm', 'modify', 'initiator-node', '--CHAP-name', auth.get_inbound_username()]
-            self._execute_assert_n_log(cmd)
-            cmd = 'iscsiadm modify initiator-node --CHAP-secret'
-            self._chap_set_password(cmd, auth.get_inbound_secret())
+            self._modify_initiator('--CHAP-name', auth.get_inbound_username())
+            self._chap_set_password('iscsiadm modify initiator-node --CHAP-secret', auth.get_inbound_secret())
 
         def _set_bidirectional_chap():
             self._modify_target('--bi-directional-authentication', 'enable', iqn)
@@ -214,6 +214,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         '''
         from .iscsi_exceptions import DiscoveryFailed
         endpoints = []
+        self._modify_initiator('--authentication', 'none')
         args = ['iscsiadm', 'add', 'discovery-address', str(ip_address) + ':' + str(port)]
         self._execute_assert_n_log(args)
         for target_connectivity in self._parse_discovered_targets():
