@@ -251,7 +251,9 @@ class SolarisISCSIapi(base.ConnectionManager):
         if auth is None:
             auth = iscsiapi_auth.NoAuth()
         logger.info("login_all in Solaris login to all available Targets !")
+        logger.warn("Performing login in Solaris disconnect momentarily all previous sessions from all targets")
         self._set_auth(auth, target.get_iqn())
+        self._disable_iscsi_auto_login()
         self._enable_iscsi_auto_login()
         return self.get_sessions(target=target)
 
