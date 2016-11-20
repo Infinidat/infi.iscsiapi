@@ -29,8 +29,6 @@ class ISCSIapi_host_TestCase(TestCase):
         cls.system_sdk.login()
         cls.iscsiapi = infi.iscsiapi.get_iscsiapi()
         assert setup_iscsi_network_interface_on_host()
-        if get_platform_string().startswith('solaris'):
-            cls.clear_auth_on_initiator()
 
     @contextmanager
     def another_system_context(self):
@@ -45,11 +43,9 @@ class ISCSIapi_host_TestCase(TestCase):
 
     def setUp(self):
         self.addCleanup(self._cleanup_iscsi_connections)
-        self.addCleanup(self.clear_auth_on_initiator)
 
     def _cleanup_iscsi_connections(self):
         self.iscsiapi.undiscover()
-        self.clear_auth_on_initiator()
 
     @classmethod
     def tearDownClass(cls):
@@ -66,13 +62,6 @@ class ISCSIapi_host_TestCase(TestCase):
             infi.iscsiapi.get_iscsiapi()
         except ImportError:
             raise SkipTest("not available on this platform")
-
-    @classmethod
-    def clear_auth_on_initiator(cls):
-        '''temporery work around for discovery with chap'''
-        if get_platform_string().startswith('solaris'):
-            iscsi = infi.iscsiapi.get_iscsiapi()
-            iscsi._clear_auth()
 
     def test_01_iscsi_software(self):
         iscsi_sw = infi.iscsiapi.get_iscsi_software_initiator()
@@ -196,11 +185,10 @@ class ISCSIapi_host_TestCase(TestCase):
         auth = iscsi_auth.ChapAuth(INBOUND_USERNAME, INBOUND_SECRET)
 
         self._assert_discovery_login_logout(net_space, host, auth)
-        self.clear_auth_on_initiator()
         self._assert_discovery_login_logout(net_space, host, auth)
 
-        self.clear_auth_on_initiator()
         self._assert_login_to_two_systems(net_space, host, auth)
+        self._assert_login_to_two_systems(net_space, host, iscsi_auth.NoAuth())
 
     def test_06_mutual_chap_login(self):
         net_space = setup_iscsi_on_infinibox(self.system_sdk)
@@ -209,11 +197,10 @@ class ISCSIapi_host_TestCase(TestCase):
         auth = iscsi_auth.MutualChapAuth(INBOUND_USERNAME, INBOUND_SECRET, OUTBOUND_USERNAME, OUTBOUND_SECRET)
 
         self._assert_discovery_login_logout(net_space, host, auth)
-        self.clear_auth_on_initiator()
         self._assert_discovery_login_logout(net_space, host, auth)
 
-        self.clear_auth_on_initiator()
         self._assert_login_to_two_systems(net_space, host, auth)
+        self._assert_login_to_two_systems(net_space, host, iscsi_auth.NoAuth())
 
 
 import requests
