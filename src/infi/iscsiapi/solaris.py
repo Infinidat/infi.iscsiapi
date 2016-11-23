@@ -271,11 +271,13 @@ class SolarisISCSIapi(base.ConnectionManager):
         '''
         # TODO: add HCT to session
         def get_sessions_for_target(target):
+            from infi.dtypes.hctl import HCT
             target_sessions = []
             for session in self._parse_availble_sessions():
                 if session['iqn'] == target.get_iqn():
+                    hct = HCT(session['src_ip'], 0, session['dst_port'])
                     target_sessions.append(base.Session(target, base.Endpoint(session['dst_ip'], session['dst_port']),
-                                 session['src_ip'], self.get_source_iqn(), session['uid'], None))
+                                 session['src_ip'], self.get_source_iqn(), session['uid'], hct))
             return target_sessions
 
         if target:
