@@ -275,7 +275,7 @@ class SolarisISCSIapi(base.ConnectionManager):
             target_sessions = []
             for session in self._parse_availble_sessions():
                 if session['iqn'] == target.get_iqn():
-                    hct = HCT(session['src_ip'], 0, session['dst_port'])
+                    hct = HCT(session['src_ip'], 0, session['dst_ip'])
                     target_sessions.append(base.Session(target, base.Endpoint(session['dst_ip'], session['dst_port']),
                                  session['src_ip'], self.get_source_iqn(), session['uid'], hct))
             return target_sessions
