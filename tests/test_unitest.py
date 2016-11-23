@@ -179,6 +179,9 @@ class ISCSIapi_host_TestCase(TestCase):
         self._assert_login_to_two_systems(net_space, host, auth)
 
     def test_05_chap_login(self):
+        if get_platform_string().startswith('solaris'):
+            raise SkipTest("iSCSI CHAP on Solaris not supported - INFINIBOX-25831")
+
         net_space = setup_iscsi_on_infinibox(self.system_sdk)
         ibox = self.system_sdk
         host = self._create_host("iscsi_testing_host")
@@ -191,6 +194,9 @@ class ISCSIapi_host_TestCase(TestCase):
         self._assert_login_to_two_systems(net_space, host, iscsi_auth.NoAuth())
 
     def test_06_mutual_chap_login(self):
+        if get_platform_string().startswith('solaris'):
+            raise SkipTest("iSCSI CHAP on Solaris not supported - INFINIBOX-25831")
+
         net_space = setup_iscsi_on_infinibox(self.system_sdk)
         ibox = self.system_sdk
         host = self._create_host("iscsi_testing_host")
