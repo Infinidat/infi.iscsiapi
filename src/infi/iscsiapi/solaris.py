@@ -89,7 +89,7 @@ class SolarisISCSIapi(base.ConnectionManager):
                 iqn = line.split()[1]
                 _ = IQN(iqn)  # make sure iqn is valid
                 for ident_line in range(1, len(output)):
-                    if re.search(r'ISID:', output[line_number + ident_line]):
+                    if re.search(r'TPGT:', output[line_number + ident_line]):
                         uid = output[line_number + ident_line].split()[1]
                     source_ip_regex = re.compile('IP address \(Local\): 'r'(?P<src_ip>\d+\.\d+\.\d+\.\d+)\:(?P<src_port>\d+)')
                     target_ip_regex = re.compile('IP address \(Peer\): 'r'(?P<dst_ip>\d+\.\d+\.\d+\.\d+)\:(?P<dst_port>\d+)')
