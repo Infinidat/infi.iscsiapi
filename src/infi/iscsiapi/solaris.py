@@ -178,7 +178,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         import pexpect
         from infi.iscsiapi.iscsi_exceptions import ChapPasswordTooLong
         if len(password) > 16:
-            raise ChapPasswordTooLong
+            raise ChapPasswordTooLong()
         logger.debug("running: {}".format(cmd))
         process = pexpect.spawn(cmd)
         process.expect("Enter secret:")
