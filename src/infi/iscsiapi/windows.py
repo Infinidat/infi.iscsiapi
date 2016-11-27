@@ -54,15 +54,17 @@ class WindowsISCSIapi(base.ConnectionManager):
             item.ExecMethod_('RefreshTargetList', None)
 
     def _execute_discover(self, ip_address, port):
+        from .iscsi_exceptions import DiscoveryFailed
         try:
             execute_assert_success(['iscsicli', 'AddTargetPortal', str(ip_address), str(port)])
         except ExecutionError as e:
             msg = "couldn't connect to ip_address {!r}, error: {!r}" + \
                   "This could be due to one of the following reasons:" + \
-                  "1. there is no IP connectivity between your host and {!r}" + \
-                  "2. the iSCSI server is down"
-            logger.error(msg.format(ip_address, e, ip_address))
-            raise
+                  "1. There is no IP connectivity between your host and {!r}" + \
+                  "2. The iSCSI server is down"
+            formated_msg = msg.format(ip_address, e, ip_address)
+            logger.error(formated_msg)
+            raise DiscoveryFailed(formated_msg)
 
     def _return_target(self, ip_address, port):
         endpoints = []
