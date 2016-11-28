@@ -108,7 +108,7 @@ class LinuxISCSIapi(base.ConnectionManager):
 
     def _get_sessions_using_sysfs(self):
         sessions = []
-        discovered_targets = self.get_discovered_discovered_targets()
+        discovered_targets = self.get_discovered_targets()
         source_iqn = self.get_source_iqn()
 
         for uid, ip_address, port, source_ip, endpoint, hct in self._iter_sessions_in_sysfs():
