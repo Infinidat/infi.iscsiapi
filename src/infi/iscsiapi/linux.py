@@ -61,44 +61,63 @@ class LinuxISCSIapi(base.ConnectionManager):
             except (OSError, IOError):
                 continue
 
-    def _get_sessions_using_sysfs(self):
+    def _iter_sessions_in_sysfs(self):
         import os
         import re
         from infi.os_info import get_platform_string
         from infi.dtypes.hctl import HCT
         from glob import glob
-        sessions = []
-        targets = self.get_discovered_targets()
+
         for host in glob(os.path.join('/sys', 'devices', 'platform', 'host*')):
-            if 'centos-5' in get_platform_string() or 'redhat-5' in get_platform_string():
-                sessions_path = glob(os.path.join(host, 'session*', 'connection*', 'iscsi_connection*connection*'))
-            else:
-                sessions_path = glob(os.path.join(host, 'session*', 'connection*', 'iscsi_connection', 'connection*'))
-            for session_path in sessions_path:
-                try:
-                    with open(os.path.join(session_path, 'address'), 'r') as fd:
-                        ip_address = fd.read().strip()
-                    with open(os.path.join(session_path, 'port'), 'r') as fd:
-                        port = fd.read().strip()
-                    with open(os.path.join(session_path, 'persistent_address'), 'r') as fd:
-                        source_ip = fd.read().strip()
-                    session_id = os.path.basename(glob(os.path.join(host, 'session*'))[0])
-                    if re.match('^session', session_id):
-                        uid = re.split('^session', session_id)[1]
-                    else:
-                        raise RuntimeError("couldn't get session id from {!r}".format(session_path))
-                    target_id = os.path.basename(glob(os.path.join(host, 'session*', 'target*'))[0])
-                    if re.match('^target', target_id):
-                        hct_tuple = re.split('^target', target_id)[1].split(':')
-                        hct = HCT(*(int(i) for i in hct_tuple))
+            for session in glob(os.path.join(host, 'session*')):  # usually, one session per host
+                uid = re.split('^session', os.path.basename(session))[1]
+
+                if 'centos-5' in get_platform_string() or 'redhat-5' in get_platform_string():
+                    connections = glob(os.path.join(session, 'connection*', 'iscsi_connection*connection*'))
+                else:
+                    connections = glob(os.path.join(session, 'connection*', 'iscsi_connection', 'connection*'))
+
+                for connection in connections:
+                    try:
+                        with open(os.path.join(connection, 'address'), 'r') as fd:
+                            ip_address = fd.read().strip()
+                        with open(os.path.join(connection, 'port'), 'r') as fd:
+                            port = fd.read().strip()
+                        with open(os.path.join(connection, 'persistent_address'), 'r') as fd:
+                            source_ip = fd.read().strip()
+                        break
+                    except (IOError, OSError):
+                        logger.debug("connection parameters are missing for {}".format(connection))
+                        continue
+                else:  # no connections in session
+                    logger.debug("no valid connection for session {}".format(session))
+
+                    continue
+
+                for target in glob(os.path.join(session, 'target*')):  # usually, one target per session
+                    target_id = os.path.basename(target)
                     endpoint = base.Endpoint(ip_address, port)
-                    for target in targets:
-                        if endpoint in target.get_endpoints():
-                            session = base.Session(target, endpoint, source_ip, self.get_source_iqn(), uid, hct)
-                            sessions.append(session)
-                            break
-                except IOError:
-                    logger.debug("this path {!r} isn't connected".format(session_path))
+                    hct_tuple = re.split('^target', target_id)[1].split(':')
+                    hct = HCT(*(int(i) for i in hct_tuple))
+                    break
+                else:  # no targets in session
+                    logger.debug("no targets for session {}".format(session))
+                    continue
+
+                yield uid, ip_address, port, source_ip, endpoint, hct
+
+    def _get_sessions_using_sysfs(self):
+        sessions = []
+        discovered_targets = self.get_discovered_discovered_targets()
+        source_iqn = self.get_source_iqn()
+
+        for uid, ip_address, port, source_ip, endpoint, hct in self._iter_sessions_in_sysfs():
+            for target in discovered_targets:
+                if endpoint in target.get_endpoints():
+                    session = base.Session(target, endpoint, source_ip, source_iqn, uid, hct)
+                    sessions.append(session)
+                    break
+                else:  # no targets to match for
                     continue
         return sessions
 
