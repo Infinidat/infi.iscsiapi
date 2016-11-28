@@ -48,14 +48,18 @@ class LinuxISCSIapi(base.ConnectionManager):
         '''
         import os
         import re
+        import glob
         regex = re.compile('node.discovery_address = 'r'(?P<ip>\d+\.\d+\.\d+\.\d+)')
         _ = IQN(iqn)  # make sure it's valid iqn
-        single_connection = os.listdir(os.path.join(ISCSI_CONNECTION_CONFIG, iqn))[0]
-        single_path = os.path.join(ISCSI_CONNECTION_CONFIG, iqn, single_connection, 'default')
-        with open(single_path, 'r') as fd:
-            for line in fd:
-                if re.match(regex, line.strip()):
-                    return regex.search(line.strip()).groupdict()['ip']
+        for filepath in glob.glob(os.path.join(ISCSI_CONNECTION_CONFIG, iqn, '*', # target address
+                                               'default')):
+            try:
+                with open(filepath, 'r') as fd:
+                    for line in fd:
+                        if re.match(regex, line.strip()):
+                            return regex.search(line.strip()).groupdict()['ip']
+            except (OSError, IOError):
+                continue
 
     def _get_initiator_ip_using_sysfs(self, target_ip_address):
         ''' receives destination ip address as a string and return the initiator ip address
@@ -174,7 +178,10 @@ class LinuxISCSIapi(base.ConnectionManager):
         uniq_iqn = list(set(iqn_list))
         for iqn in uniq_iqn:
             endpoints = []
-            discovery_endpoint = base.Endpoint(self._parse_discovery_address(iqn), 3260)  # TODO parse point
+            discovery_address = self._parse_discovery_address(iqn)
+            if discovery_address is None:  # possible race
+                continue
+            discovery_endpoint = base.Endpoint(discovery_address, 3260)  # TODO parse port
             for connectivity in self._parse_connection_config():
                 if connectivity['iqn'] == iqn:
                     endpoints.append(base.Endpoint(connectivity['dst_ip'], connectivity['dst_port']))
