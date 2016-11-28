@@ -114,6 +114,8 @@ class SolarisISCSIapi(base.ConnectionManager):
         uniq_iqn = list(set(iqn_list))
         for iqn in uniq_iqn:
             endpoints = []
+            if self._parse_discovery_address(iqn) is None:
+                continue
             ip_address, port = self._parse_discovery_address(iqn)
             discovery_endpoint = base.Endpoint(ip_address, port)
             for connectivity in self._parse_discovered_targets():
