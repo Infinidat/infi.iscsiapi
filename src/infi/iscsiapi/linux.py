@@ -61,30 +61,6 @@ class LinuxISCSIapi(base.ConnectionManager):
             except (OSError, IOError):
                 continue
 
-    def _get_initiator_ip_using_sysfs(self, target_ip_address):
-        ''' receives destination ip address as a string and return the initiator ip address
-        '''
-        import os
-        from glob import glob
-        SYSFS_CONN_BASE_DIR = os.path.join('/sys', 'class', 'scsi_host')
-        for host in os.listdir(SYSFS_CONN_BASE_DIR):
-            try:
-                target_ip_address_file = glob(os.path.join(SYSFS_CONN_BASE_DIR, host, 'device', 'session*',
-                                                      'connection*', 'iscsi_connection', 'connection*', 'address'))
-            except:
-                continue
-            if target_ip_address_file == []:
-                continue
-            target_ip_address_file = target_ip_address_file[0]
-            logger.debug("opening file {} to get target ip address".format(target_ip_address_file))
-            with open(target_ip_address_file, 'r') as fd:
-                if target_ip_address == fd.read().strip():
-                    initiator_ip_address_file = glob(os.path.join('/sys', 'class', 'scsi_host', host, 'device', 'iscsi_host',
-                                                             host, 'ipaddress'))
-                    with open(initiator_ip_address_file[0], 'r') as fd:
-                        initiator_ip_address = fd.read().strip()
-                        return initiator_ip_address
-
     def _get_sessions_using_sysfs(self):
         import os
         import re
