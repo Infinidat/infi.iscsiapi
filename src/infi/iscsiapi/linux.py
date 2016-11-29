@@ -186,6 +186,7 @@ class LinuxISCSIapi(base.ConnectionManager):
     def get_source_iqn(self):
         '''return infi.dtypes.iqn type iqn if iscsi initiator file exists
         '''
+        from .iscsi_exceptions import NotReadyException
         import re
         from os.path import isfile
         if isfile(ISCSI_INITIATOR_IQN_FILE):
@@ -195,7 +196,7 @@ class LinuxISCSIapi(base.ConnectionManager):
                 raw_iqn = re.split('InitiatorName=', data[0])
                 return IQN(raw_iqn[1].strip())
         else:
-            raise Exception("iSCSI initiator IQN file not found")
+            raise NotReadyException("iSCSI initiator IQN file not found")
 
     def set_source_iqn(self, iqn):
         '''receives a string, validates it's an iqn then set it to the host

@@ -6,3 +6,6 @@ class WMIConnectionInformationMissing(Exception):
 
 class DiscoveryFailed(Exception):
     pass
+
+class NotReadyException(Exception):
+    pass
