@@ -1,11 +1,9 @@
 import infi.iscsiapi
 from infi.vendata.integration_tests import TestCase
 from infi.vendata.integration_tests.iscsi import setup_iscsi_network_interface_on_host, setup_iscsi_on_infinibox
-from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from unittest import SkipTest
 from infi.os_info import get_platform_string
 from subprocess import check_output
-from time import sleep
 from infi.iscsiapi import auth as iscsi_auth
 from infi.pyutils.contexts import contextmanager
 from logging import getLogger
@@ -15,6 +13,10 @@ INBOUND_SECRET = "chappass123467"
 OUTBOUND_USERNAME = "chap_user2"
 OUTBOUND_SECRET = "PASS-chap_8&1231"
 
+INBOUND_USERNAME2 = "chapuser2"
+INBOUND_SECRET2 = "chappass1234672"
+OUTBOUND_USERNAME2 = "chap_user22"
+OUTBOUND_SECRET2 = "PASS-chap_8&12312"
 
 logger = getLogger(__name__)
 
@@ -28,6 +30,8 @@ class ISCSIapi_host_TestCase(TestCase):
         cls.system_sdk = cls.system.get_infinisdk()
         cls.system_sdk.login()
         cls.iscsiapi = infi.iscsiapi.get_iscsiapi()
+        cls.auth1 = iscsi_auth.MutualChapAuth(INBOUND_USERNAME, INBOUND_SECRET, OUTBOUND_USERNAME, OUTBOUND_SECRET)
+        cls.auth2 = iscsi_auth.MutualChapAuth(INBOUND_USERNAME2, INBOUND_SECRET2, OUTBOUND_USERNAME2, OUTBOUND_SECRET2)
         assert setup_iscsi_network_interface_on_host()
 
     @contextmanager
@@ -62,40 +66,6 @@ class ISCSIapi_host_TestCase(TestCase):
             infi.iscsiapi.get_iscsiapi()
         except ImportError:
             raise SkipTest("not available on this platform")
-
-    def test_01_iscsi_software(self):
-        iscsi_sw = infi.iscsiapi.get_iscsi_software_initiator()
-        if get_platform_string().startswith('solaris'):
-            raise SkipTest("iSCSI is installed by default on Solaris")
-        if not iscsi_sw.is_installed():
-            iscsi_sw.install()
-            iscsi_sw.uninstall()
-            iscsi_sw.install()
-        self.assertNotEqual(iscsi_sw.is_installed, True)
-
-    def test_02_iscsiapi_set_source_iqn(self):
-        from infi.dtypes.iqn import IQN
-        new_iqn_string = 'iqn.1991-05.com.microsoft:asdasd'
-        original_iqn = self.iscsiapi.get_source_iqn()
-        self.iscsiapi.set_source_iqn(new_iqn_string)
-        self.assertEqual(type(self.iscsiapi.get_source_iqn()), IQN)
-        self.assertEqual(str(self.iscsiapi.get_source_iqn()), new_iqn_string)
-        self.iscsiapi.set_source_iqn(str(original_iqn))
-        self.assertEqual(str(self.iscsiapi.get_source_iqn()), original_iqn)
-
-    def test_03_discover_undiscover(self):
-        self.iscsiapi.undiscover()
-        self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 0)
-        net_space = setup_iscsi_on_infinibox(self.system_sdk)
-        target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
-        self.addCleanup(self.iscsiapi.logout_all, target)
-        self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 1)
-        self.assertEqual(type(target), infi.iscsiapi.base.Target)
-        self.assertEqual(target.get_discovery_endpoint().get_ip_address(), net_space.get_field('ips')[0].ip_address)
-        self.assertNotEqual(target.get_iqn(), None)
-        self.assertEqual(self.iscsiapi.get_discovered_targets()[0].get_iqn(), target.get_iqn())
-        self.iscsiapi.undiscover(target)
-        self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 0)
 
     def _create_host(self, hostname, sdk=None):
         ibox = sdk or self.system_sdk
@@ -140,12 +110,19 @@ class ISCSIapi_host_TestCase(TestCase):
         message = 'We expected {0} connections to target {1} but found {2}'.format(expected, target.get_iqn(), actual)
         self.assertEqual(actual, expected, message)
 
+    def _service_stop_check_start_check(self, target):
+        from control_iscsi_serivce import get_platform_specific_iscsi_service
+        iscsi_service = get_platform_specific_iscsi_service()
+        iscsi_service.stop()
+        self._assert_number_of_action_sessions(target, 0)
+        iscsi_service.start()
+        self._assert_number_of_action_sessions(target, len(target.get_endpoints()))
+
     @contextmanager
     def _iscsi_connection_context(self, net_space, host, auth):
         self._change_auth_on_ibox(host, auth)
         target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
         self.addCleanup(self.iscsiapi.logout_all, target)
-
         self.iscsiapi.login_all(target, auth)
         self._assert_number_of_action_sessions(target, len(target.get_endpoints()))
 
@@ -159,14 +136,62 @@ class ISCSIapi_host_TestCase(TestCase):
         with self._iscsi_connection_context(net_space, host, auth) as target:
             pass
 
-    def _assert_login_to_two_systems(self, net_space, host, auth):
+    def _assert_discovery_login_logout_consistent(self, net_space, host, auth):
+        with self._iscsi_connection_context(net_space, host, auth) as target:
+            self._service_stop_check_start_check(target)
+
+    def _assert_login_to_two_systems(self, net_space, host, auth1, auth2):
         with self.another_system_context() as system:
             sdk = system.get_infinisdk()
             another_net_space = setup_iscsi_on_infinibox(sdk)
             another_host = self._create_host("another_host", sdk)
-            with self._iscsi_connection_context(net_space, host, auth) as target1:
-                with self._iscsi_connection_context(another_net_space, another_host, auth) as target2:
+            with self._iscsi_connection_context(net_space, host, auth1) as target1:
+                with self._iscsi_connection_context(another_net_space, another_host, auth2) as target2:
                     pass
+
+    def _assert_login_to_two_systems_consistent(self, net_space, host, auth1, auth2):
+        with self.another_system_context() as system:
+            sdk = system.get_infinisdk()
+            another_net_space = setup_iscsi_on_infinibox(sdk)
+            another_host = self._create_host("another_host", sdk)
+            with self._iscsi_connection_context(net_space, host, auth1) as target1:
+                with self._iscsi_connection_context(another_net_space, another_host, auth2) as target2:
+                    self._service_stop_check_start_check(target1)
+                    self._service_stop_check_start_check(target2)
+
+    def test_01_iscsi_software(self):
+        iscsi_sw = infi.iscsiapi.get_iscsi_software_initiator()
+        if get_platform_string().startswith('solaris'):
+            raise SkipTest("iSCSI is installed by default on Solaris")
+        if not iscsi_sw.is_installed():
+            iscsi_sw.install()
+            iscsi_sw.uninstall()
+            iscsi_sw.install()
+        self.assertNotEqual(iscsi_sw.is_installed, True)
+
+    def test_02_iscsiapi_set_source_iqn(self):
+        from infi.dtypes.iqn import IQN
+        new_iqn_string = 'iqn.1991-05.com.microsoft:asdasd'
+        original_iqn = self.iscsiapi.get_source_iqn()
+        self.iscsiapi.set_source_iqn(new_iqn_string)
+        self.assertEqual(type(self.iscsiapi.get_source_iqn()), IQN)
+        self.assertEqual(str(self.iscsiapi.get_source_iqn()), new_iqn_string)
+        self.iscsiapi.set_source_iqn(str(original_iqn))
+        self.assertEqual(str(self.iscsiapi.get_source_iqn()), original_iqn)
+
+    def test_03_discover_undiscover(self):
+        self.iscsiapi.undiscover()
+        self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 0)
+        net_space = setup_iscsi_on_infinibox(self.system_sdk)
+        target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
+        self.addCleanup(self.iscsiapi.logout_all, target)
+        self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 1)
+        self.assertEqual(type(target), infi.iscsiapi.base.Target)
+        self.assertEqual(target.get_discovery_endpoint().get_ip_address(), net_space.get_field('ips')[0].ip_address)
+        self.assertNotEqual(target.get_iqn(), None)
+        self.assertEqual(self.iscsiapi.get_discovered_targets()[0].get_iqn(), target.get_iqn())
+        self.iscsiapi.undiscover(target)
+        self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 0)
 
     def test_04_login(self):
         net_space = setup_iscsi_on_infinibox(self.system_sdk)
@@ -176,7 +201,7 @@ class ISCSIapi_host_TestCase(TestCase):
 
         self._assert_discovery_login_logout(net_space, host, auth)
         self._assert_discovery_login_logout(net_space, host, auth)
-        self._assert_login_to_two_systems(net_space, host, auth)
+        self._assert_login_to_two_systems(net_space, host, auth, auth)
 
     def test_05_chap_login(self):
         if get_platform_string().startswith('solaris'):
@@ -185,13 +210,14 @@ class ISCSIapi_host_TestCase(TestCase):
         net_space = setup_iscsi_on_infinibox(self.system_sdk)
         ibox = self.system_sdk
         host = self._create_host("iscsi_testing_host")
-        auth = iscsi_auth.ChapAuth(INBOUND_USERNAME, INBOUND_SECRET)
+        auth1 = iscsi_auth.ChapAuth(INBOUND_USERNAME, INBOUND_SECRET)
+        auth2 = iscsi_auth.ChapAuth(INBOUND_USERNAME2, INBOUND_SECRET2)
 
-        self._assert_discovery_login_logout(net_space, host, auth)
-        self._assert_discovery_login_logout(net_space, host, auth)
+        self._assert_discovery_login_logout(net_space, host, auth1)
+        self._assert_discovery_login_logout(net_space, host, auth1)
 
-        self._assert_login_to_two_systems(net_space, host, auth)
-        self._assert_login_to_two_systems(net_space, host, iscsi_auth.NoAuth())
+        self._assert_login_to_two_systems(net_space, host, auth1, auth2)
+        self._assert_login_to_two_systems(net_space, host, iscsi_auth.NoAuth(), iscsi_auth.NoAuth())
 
     def test_06_mutual_chap_login(self):
         if get_platform_string().startswith('solaris'):
@@ -200,14 +226,25 @@ class ISCSIapi_host_TestCase(TestCase):
         net_space = setup_iscsi_on_infinibox(self.system_sdk)
         ibox = self.system_sdk
         host = self._create_host("iscsi_testing_host")
-        auth = iscsi_auth.MutualChapAuth(INBOUND_USERNAME, INBOUND_SECRET, OUTBOUND_USERNAME, OUTBOUND_SECRET)
 
-        self._assert_discovery_login_logout(net_space, host, auth)
-        self._assert_discovery_login_logout(net_space, host, auth)
+        self._assert_discovery_login_logout(net_space, host, self.auth1)
+        self._assert_discovery_login_logout(net_space, host, self.auth1)
 
-        self._assert_login_to_two_systems(net_space, host, auth)
-        self._assert_login_to_two_systems(net_space, host, iscsi_auth.NoAuth())
+        self._assert_login_to_two_systems(net_space, host, self.auth1, self.auth2)
+        self._assert_login_to_two_systems(net_space, host, iscsi_auth.NoAuth(), iscsi_auth.NoAuth())
 
+    def test_07_consistent_login(self):
+        net_space = setup_iscsi_on_infinibox(self.system_sdk)
+        host = self._create_host("iscsi_testing_host")
+        no_auth = iscsi_auth.NoAuth()
+        chap_auth1 = iscsi_auth.ChapAuth(INBOUND_USERNAME, INBOUND_SECRET)
+        chap_auth2 = iscsi_auth.ChapAuth(INBOUND_USERNAME2, INBOUND_SECRET2)
+        self._assert_discovery_login_logout_consistent(net_space, host, no_auth)
+        self._assert_discovery_login_logout_consistent(net_space, host, chap_auth1)
+        self._assert_discovery_login_logout_consistent(net_space, host, self.auth1)
+        self._assert_login_to_two_systems_consistent(net_space, host, no_auth, no_auth)
+        self._assert_login_to_two_systems_consistent(net_space, host, chap_auth1, chap_auth2)
+        self._assert_login_to_two_systems_consistent(net_space, host, self.auth1, self.auth2)
 
 import requests
 requests.packages.urllib3.disable_warnings()
