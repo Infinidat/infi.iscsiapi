@@ -229,8 +229,10 @@ class ISCSIapi_host_TestCase(TestCase):
 
         self._assert_discovery_login_logout(net_space, host, self.auth1)
         self._assert_discovery_login_logout(net_space, host, self.auth1)
-
-        self._assert_login_to_two_systems(net_space, host, self.auth1, self.auth2)
+        if get_platform_string().startswith('windows'):
+            self._assert_login_to_two_systems(net_space, host, self.auth1, self.auth1)
+        else:
+            self._assert_login_to_two_systems(net_space, host, self.auth1, self.auth2)
         self._assert_login_to_two_systems(net_space, host, iscsi_auth.NoAuth(), iscsi_auth.NoAuth())
 
     def test_07_consistent_login(self):
