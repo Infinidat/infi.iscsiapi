@@ -321,8 +321,10 @@ class WindowsISCSIapi(base.ConnectionManager):
                 target_address = conn_0.Properties_.Item('TargetAddress').Value
                 target_port = conn_0.Properties_.Item('TargetPort').Value
 
-                devices = list(session.Properties_.Item('Devices').Value)
-                if devices:
+                if session.Properties_.Item('Devices').Value is None:
+                    hct = HCT(-1, 0, -1)
+                else:
+                    devices = list(session.Properties_.Item('Devices').Value)
                     hct = HCT(devices[0].Properties_.Item('ScsiPortNumber').Value,
                               devices[0].Properties_.Item('ScsiPathId').Value,
                               devices[0].Properties_.Item('ScsiTargetId').Value)

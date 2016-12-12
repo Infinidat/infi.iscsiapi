@@ -21,7 +21,7 @@ OUTBOUND_SECRET2 = "PASS-chap_8&12312"
 logger = getLogger(__name__)
 
 
-class ISCSIapi_host_TestCase(TestCase):
+class ISCSIapiHostTestCase(TestCase):
     @classmethod
     def setUpClass(cls):
         cls.skip_if_not_available()
@@ -122,7 +122,6 @@ class ISCSIapi_host_TestCase(TestCase):
     def _iscsi_connection_context(self, net_space, host, auth):
         self._change_auth_on_ibox(host, auth)
         target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
-        self.addCleanup(self.iscsiapi.logout_all, target)
         self.iscsiapi.login_all(target, auth)
         self._assert_number_of_action_sessions(target, len(target.get_endpoints()))
 
@@ -236,6 +235,8 @@ class ISCSIapi_host_TestCase(TestCase):
         self._assert_login_to_two_systems(net_space, host, iscsi_auth.NoAuth(), iscsi_auth.NoAuth())
 
     def test_07_consistent_login(self):
+        if get_platform_string().startswith('windows'):
+            raise SkipTest("not available on this platform")
         net_space = setup_iscsi_on_infinibox(self.system_sdk)
         host = self._create_host("iscsi_testing_host")
         no_auth = iscsi_auth.NoAuth()

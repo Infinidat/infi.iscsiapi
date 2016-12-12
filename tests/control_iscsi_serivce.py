@@ -29,18 +29,18 @@ class ISCSILinuxServiceStates(ISCSIServiceStates):
 
 class ISCSIWindowsServiceStates(ISCSIServiceStates):
     def stop(self):
-        from infi.win32service import ServiceControlManagerContext
-        with ServiceControlManagerContext() as scm:
-            with scm.open_service('MSiSCSI') as service:
-                service.safe_stop()
-                service.wait_on_pending()
+        from infi.iscsiapi import get_iscsiapi
+        api = get_iscsiapi()
+        sessions = api.get_sessions()
+        for session in sessions:
+            api.logout(session)
 
     def start(self):
-        from infi.win32service import ServiceControlManagerContext
-        with ServiceControlManagerContext() as scm:
-            with scm.open_service('MSiSCSI') as service:
-                service.safe_start()
-                service.wait_on_pending()
+        process = execute_assert_success(['iscsicli', 'listtargets'])
+        output = process.get_stdout().splitlines()
+        for line in output:
+            if "infinibox" in line:
+                execute_assert_success(['iscsicli', 'QLoginTarget', line.strip()])
 
 class ISCSISolarisServiceStates(ISCSIServiceStates):
     def start(self):
