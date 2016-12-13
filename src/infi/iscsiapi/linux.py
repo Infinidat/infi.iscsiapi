@@ -190,14 +190,13 @@ class LinuxISCSIapi(base.ConnectionManager):
         from .iscsi_exceptions import NotReadyException
         import re
         from os.path import isfile
-        if isfile(ISCSI_INITIATOR_IQN_FILE):
-            with open(ISCSI_INITIATOR_IQN_FILE, 'r') as fd:
-                data = self._remove_comments(fd.readlines())
-                assert len(data) == 1, "something isn't right with {}".format(ISCSI_INITIATOR_IQN_FILE)
-                raw_iqn = re.split('InitiatorName=', data[0])
-                return IQN(raw_iqn[1].strip())
-        else:
+        if not isfile(ISCSI_INITIATOR_IQN_FILE):
             raise NotReadyException("iSCSI initiator IQN file not found")
+        with open(ISCSI_INITIATOR_IQN_FILE, 'r') as fd:
+            data = self._remove_comments(fd.readlines())
+            assert len(data) == 1, "something isn't right with {}".format(ISCSI_INITIATOR_IQN_FILE)
+            raw_iqn = re.split('InitiatorName=', data[0])
+            return IQN(raw_iqn[1].strip())
 
     def set_source_iqn(self, iqn):
         '''receives a string, validates it's an iqn then set it to the host

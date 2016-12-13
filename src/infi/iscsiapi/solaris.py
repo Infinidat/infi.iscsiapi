@@ -134,8 +134,7 @@ class SolarisISCSIapi(base.ConnectionManager):
             iqn = iqn_line.split('Initiator node name: ')[1]
             return IQN(iqn)  # Validate iqn is legal
         else:
-            raise RuntimeError("something isn't right with {}, {}, {!r}".format(
-                                iqn, iqn_line, process.get_stdout()))
+            raise RuntimeError("Couldn't find IQN from iscsiadm output, got {!r}".format(process.get_stdout()))
 
     def set_source_iqn(self, iqn):
         '''receives a string, validates it's an iqn then set it to the host
