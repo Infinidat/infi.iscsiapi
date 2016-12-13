@@ -103,6 +103,16 @@ class ISCSIapiHostTestCase(TestCase):
             logger.debug(command)
             logger.debug(check_output(command, shell=True))
 
+    def _get_system_net_space(self, system):
+        from infinisdk_internal.exceptions import NetworkConfigError
+        from time import sleep
+        try:
+            net_space = setup_iscsi_on_infinibox(system)
+        except NetworkConfigError:
+            sleep(10)
+            net_space = setup_iscsi_on_infinibox(system)
+        return net_space
+
     def _assert_number_of_action_sessions(self, target, expected):
         if get_platform_string().startswith('solaris'):
             self._solaris_debug_dump()
@@ -142,7 +152,7 @@ class ISCSIapiHostTestCase(TestCase):
     def _assert_login_to_two_systems(self, net_space, host, auth1, auth2):
         with self.another_system_context() as system:
             sdk = system.get_infinisdk()
-            another_net_space = setup_iscsi_on_infinibox(sdk)
+            another_net_space = self._get_system_net_space(sdk)
             another_host = self._create_host("another_host", sdk)
             with self._iscsi_connection_context(net_space, host, auth1) as target1:
                 with self._iscsi_connection_context(another_net_space, another_host, auth2) as target2:
@@ -181,7 +191,7 @@ class ISCSIapiHostTestCase(TestCase):
     def test_03_discover_undiscover(self):
         self.iscsiapi.undiscover()
         self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 0)
-        net_space = setup_iscsi_on_infinibox(self.system_sdk)
+        net_space = self._get_system_net_space(self.system_sdk)
         target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
         self.addCleanup(self.iscsiapi.logout_all, target)
         self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 1)
@@ -193,7 +203,7 @@ class ISCSIapiHostTestCase(TestCase):
         self.assertEqual(len(self.iscsiapi.get_discovered_targets()), 0)
 
     def test_04_login(self):
-        net_space = setup_iscsi_on_infinibox(self.system_sdk)
+        net_space = self._get_system_net_space(self.system_sdk)
         ibox = self.system_sdk
         host = self._create_host("iscsi_testing_host")
         auth = iscsi_auth.NoAuth()
@@ -206,7 +216,7 @@ class ISCSIapiHostTestCase(TestCase):
         if get_platform_string().startswith('solaris'):
             raise SkipTest("iSCSI CHAP on Solaris not supported - INFINIBOX-25831")
 
-        net_space = setup_iscsi_on_infinibox(self.system_sdk)
+        net_space = self._get_system_net_space(self.system_sdk)
         ibox = self.system_sdk
         host = self._create_host("iscsi_testing_host")
         auth1 = iscsi_auth.ChapAuth(INBOUND_USERNAME, INBOUND_SECRET)
@@ -222,7 +232,7 @@ class ISCSIapiHostTestCase(TestCase):
         if get_platform_string().startswith('solaris'):
             raise SkipTest("iSCSI CHAP on Solaris not supported - INFINIBOX-25831")
 
-        net_space = setup_iscsi_on_infinibox(self.system_sdk)
+        net_space = self._get_system_net_space(self.system_sdk)
         ibox = self.system_sdk
         host = self._create_host("iscsi_testing_host")
 
@@ -237,7 +247,7 @@ class ISCSIapiHostTestCase(TestCase):
     def test_07_consistent_login(self):
         if get_platform_string().startswith('windows'):
             raise SkipTest("not available on this platform")
-        net_space = setup_iscsi_on_infinibox(self.system_sdk)
+        net_space = self._get_system_net_space(self.system_sdk)
         host = self._create_host("iscsi_testing_host")
         no_auth = iscsi_auth.NoAuth()
         chap_auth1 = iscsi_auth.ChapAuth(INBOUND_USERNAME, INBOUND_SECRET)
