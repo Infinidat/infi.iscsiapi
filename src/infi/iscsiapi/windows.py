@@ -227,9 +227,12 @@ class WindowsISCSIapi(base.ConnectionManager):
             self.logout(session)
 
     def get_source_iqn(self):
+        from .iscsi_exceptions import NotReadyException
         client = WmiClient('root\\wmi')
-        query = client.execute_query('SELECT * FROM MSIscsiInitiator_MethodClass')
-        iqn = list(query)[0].Properties_.Item("ISCSINodeName").Value
+        query = list(client.execute_query('SELECT * FROM MSIscsiInitiator_MethodClass'))
+        if not result:
+            raise NotReadyException("Could not query iSCSI initiator from WMI")
+        iqn = query[0].Properties_.Item("ISCSINodeName").Value
         return IQN(iqn)
 
     def set_source_iqn(self, iqn):
