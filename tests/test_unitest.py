@@ -243,11 +243,12 @@ class ISCSIapiHostTestCase(TestCase):
         chap_auth1 = iscsi_auth.ChapAuth(INBOUND_USERNAME, INBOUND_SECRET)
         chap_auth2 = iscsi_auth.ChapAuth(INBOUND_USERNAME2, INBOUND_SECRET2)
         self._assert_discovery_login_logout_consistent(net_space, host, no_auth)
-        self._assert_discovery_login_logout_consistent(net_space, host, chap_auth1)
-        self._assert_discovery_login_logout_consistent(net_space, host, self.auth1)
         self._assert_login_to_two_systems_consistent(net_space, host, no_auth, no_auth)
-        self._assert_login_to_two_systems_consistent(net_space, host, chap_auth1, chap_auth2)
-        self._assert_login_to_two_systems_consistent(net_space, host, self.auth1, self.auth2)
+        if not get_platform_string().startswith('solaris'):  #  INFINIBOX-25831
+            self._assert_discovery_login_logout_consistent(net_space, host, chap_auth1)
+            self._assert_discovery_login_logout_consistent(net_space, host, self.auth1)
+            self._assert_login_to_two_systems_consistent(net_space, host, chap_auth1, chap_auth2)
+            self._assert_login_to_two_systems_consistent(net_space, host, self.auth1, self.auth2)
 
 import requests
 requests.packages.urllib3.disable_warnings()
