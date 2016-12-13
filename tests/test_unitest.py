@@ -140,6 +140,7 @@ class ISCSIapiHostTestCase(TestCase):
         finally:
             self.iscsiapi.logout_all(target)
             self._assert_number_of_action_sessions(target, 0)
+            self.iscsiapi.undiscover(target)
 
     def _assert_discovery_login_logout(self, net_space, host, auth):
         with self._iscsi_connection_context(net_space, host, auth) as target:
