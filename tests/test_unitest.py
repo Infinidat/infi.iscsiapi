@@ -6,6 +6,7 @@ from infi.os_info import get_platform_string
 from subprocess import check_output
 from infi.iscsiapi import auth as iscsi_auth
 from infi.pyutils.contexts import contextmanager
+from time import sleep
 from logging import getLogger
 
 INBOUND_USERNAME = "chapuser"
@@ -32,7 +33,9 @@ class ISCSIapiHostTestCase(TestCase):
         cls.iscsiapi = infi.iscsiapi.get_iscsiapi()
         cls.auth1 = iscsi_auth.MutualChapAuth(INBOUND_USERNAME, INBOUND_SECRET, OUTBOUND_USERNAME, OUTBOUND_SECRET)
         cls.auth2 = iscsi_auth.MutualChapAuth(INBOUND_USERNAME2, INBOUND_SECRET2, OUTBOUND_USERNAME2, OUTBOUND_SECRET2)
-        assert setup_iscsi_network_interface_on_host()
+        if not setup_iscsi_network_interface_on_host():
+            sleep(20)
+            assert setup_iscsi_network_interface_on_host()
 
     @contextmanager
     def another_system_context(self):
@@ -105,7 +108,6 @@ class ISCSIapiHostTestCase(TestCase):
 
     def _get_system_net_space(self, system):
         from infinisdk_internal.exceptions import NetworkConfigError
-        from time import sleep
         try:
             net_space = setup_iscsi_on_infinibox(system)
         except NetworkConfigError:
