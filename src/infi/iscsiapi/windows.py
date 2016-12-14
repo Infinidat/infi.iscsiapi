@@ -230,7 +230,7 @@ class WindowsISCSIapi(base.ConnectionManager):
         from .iscsi_exceptions import NotReadyException
         client = WmiClient('root\\wmi')
         query = list(client.execute_query('SELECT * FROM MSIscsiInitiator_MethodClass'))
-        if not result:
+        if not query:
             raise NotReadyException("Could not query iSCSI initiator from WMI")
         iqn = query[0].Properties_.Item("ISCSINodeName").Value
         return IQN(iqn)
