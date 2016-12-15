@@ -25,9 +25,17 @@ logger = getLogger(__name__)
 class ISCSIapiHostTestCase(TestCase):
     @classmethod
     def setUpClass(cls):
+        def _purge_and_retry(system):
+            '''workaround for INFINIBOX-26166'''
+            try:
+                system.purge()
+            except:
+                sleep(20)
+                system.purge()
+
         cls.skip_if_not_available()
         cls.system = cls.system_factory.allocate_infinidat_system(labels=(['ci-ready', 'iscsi']))
-        cls.system.purge()
+        _purge_and_retry(cls.system)
         cls.system_sdk = cls.system.get_infinisdk()
         cls.system_sdk.login()
         cls.iscsiapi = infi.iscsiapi.get_iscsiapi()
