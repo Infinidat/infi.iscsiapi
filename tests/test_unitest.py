@@ -115,6 +115,7 @@ class ISCSIapiHostTestCase(TestCase):
             logger.debug(check_output(command, shell=True))
 
     def _get_system_net_space(self, system):
+        '''Temp workaround unit this INFRADEV-7576 is fixed'''
         from infinisdk_internal.exceptions import NetworkConfigError
         try:
             net_space = setup_iscsi_on_infinibox(system)
