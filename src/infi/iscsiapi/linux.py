@@ -48,77 +48,76 @@ class LinuxISCSIapi(base.ConnectionManager):
         '''
         import os
         import re
+        import glob
         regex = re.compile('node.discovery_address = 'r'(?P<ip>\d+\.\d+\.\d+\.\d+)')
         _ = IQN(iqn)  # make sure it's valid iqn
-        single_connection = os.listdir(os.path.join(ISCSI_CONNECTION_CONFIG, iqn))[0]
-        single_path = os.path.join(ISCSI_CONNECTION_CONFIG, iqn, single_connection, 'default')
-        with open(single_path, 'r') as fd:
-            for line in fd:
-                if re.match(regex, line.strip()):
-                    return regex.search(line.strip()).groupdict()['ip']
-
-    def _get_initiator_ip_using_sysfs(self, target_ip_address):
-        ''' receives destination ip address as a string and return the initiator ip address
-        '''
-        import os
-        from glob import glob
-        SYSFS_CONN_BASE_DIR = os.path.join('/sys', 'class', 'scsi_host')
-        for host in os.listdir(SYSFS_CONN_BASE_DIR):
+        for filepath in glob.glob(os.path.join(ISCSI_CONNECTION_CONFIG, iqn, '*', # target address
+                                               'default')):
             try:
-                target_ip_address_file = glob(os.path.join(SYSFS_CONN_BASE_DIR, host, 'device', 'session*',
-                                                      'connection*', 'iscsi_connection', 'connection*', 'address'))
-            except:
+                with open(filepath, 'r') as fd:
+                    for line in fd:
+                        if re.match(regex, line.strip()):
+                            return regex.search(line.strip()).groupdict()['ip']
+            except (OSError, IOError):
                 continue
-            if target_ip_address_file == []:
-                continue
-            target_ip_address_file = target_ip_address_file[0]
-            logger.debug("opening file {} to get target ip address".format(target_ip_address_file))
-            with open(target_ip_address_file, 'r') as fd:
-                if target_ip_address == fd.read().strip():
-                    initiator_ip_address_file = glob(os.path.join('/sys', 'class', 'scsi_host', host, 'device', 'iscsi_host',
-                                                             host, 'ipaddress'))
-                    with open(initiator_ip_address_file[0], 'r') as fd:
-                        initiator_ip_address = fd.read().strip()
-                        return initiator_ip_address
 
-    def _get_sessions_using_sysfs(self):
+    def _iter_sessions_in_sysfs(self):
         import os
         import re
         from infi.os_info import get_platform_string
         from infi.dtypes.hctl import HCT
         from glob import glob
-        sessions = []
-        targets = self.get_discovered_targets()
+
         for host in glob(os.path.join('/sys', 'devices', 'platform', 'host*')):
-            if 'centos-5' in get_platform_string() or 'redhat-5' in get_platform_string():
-                sessions_path = glob(os.path.join(host, 'session*', 'connection*', 'iscsi_connection*connection*'))
-            else:
-                sessions_path = glob(os.path.join(host, 'session*', 'connection*', 'iscsi_connection', 'connection*'))
-            for session_path in sessions_path:
-                try:
-                    with open(os.path.join(session_path, 'address'), 'r') as fd:
-                        ip_address = fd.read().strip()
-                    with open(os.path.join(session_path, 'port'), 'r') as fd:
-                        port = fd.read().strip()
-                    with open(os.path.join(session_path, 'persistent_address'), 'r') as fd:
-                        source_ip = fd.read().strip()
-                    session_id = os.path.basename(glob(os.path.join(host, 'session*'))[0])
-                    if re.match('^session', session_id):
-                        uid = re.split('^session', session_id)[1]
-                    else:
-                        raise RuntimeError("couldn't get session id from {!r}".format(session_path))
-                    target_id = os.path.basename(glob(os.path.join(host, 'session*', 'target*'))[0])
-                    if re.match('^target', target_id):
-                        hct_tuple = re.split('^target', target_id)[1].split(':')
-                        hct = HCT(*(int(i) for i in hct_tuple))
+            for session in glob(os.path.join(host, 'session*')):  # usually, one session per host
+                uid = re.split('^session', os.path.basename(session))[1]
+
+                if 'centos-5' in get_platform_string() or 'redhat-5' in get_platform_string():
+                    connections = glob(os.path.join(session, 'connection*', 'iscsi_connection*connection*'))
+                else:
+                    connections = glob(os.path.join(session, 'connection*', 'iscsi_connection', 'connection*'))
+
+                for connection in connections:
+                    try:
+                        with open(os.path.join(connection, 'address'), 'r') as fd:
+                            ip_address = fd.read().strip()
+                        with open(os.path.join(connection, 'port'), 'r') as fd:
+                            port = fd.read().strip()
+                        with open(os.path.join(connection, 'persistent_address'), 'r') as fd:
+                            source_ip = fd.read().strip()
+                        break
+                    except (IOError, OSError):
+                        logger.debug("connection parameters are missing for {}".format(connection))
+                        continue
+                else:  # no connections in session
+                    logger.debug("no valid connection for session {}".format(session))
+
+                    continue
+
+                for target in glob(os.path.join(session, 'target*')):  # usually, one target per session
+                    target_id = os.path.basename(target)
                     endpoint = base.Endpoint(ip_address, port)
-                    for target in targets:
-                        if endpoint in target.get_endpoints():
-                            session = base.Session(target, endpoint, source_ip, self.get_source_iqn(), uid, hct)
-                            sessions.append(session)
-                            break
-                except IOError:
-                    logger.debug("this path {!r} isn't connected".format(session_path))
+                    hct_tuple = re.split('^target', target_id)[1].split(':')
+                    hct = HCT(*(int(i) for i in hct_tuple))
+                    break
+                else:  # no targets in session
+                    logger.debug("no targets for session {}".format(session))
+                    continue
+
+                yield uid, ip_address, port, source_ip, endpoint, hct
+
+    def _get_sessions_using_sysfs(self):
+        sessions = []
+        discovered_targets = self.get_discovered_targets()
+        source_iqn = self.get_source_iqn()
+
+        for uid, ip_address, port, source_ip, endpoint, hct in self._iter_sessions_in_sysfs():
+            for target in discovered_targets:
+                if endpoint in target.get_endpoints():
+                    session = base.Session(target, endpoint, source_ip, source_iqn, uid, hct)
+                    sessions.append(session)
+                    break
+                else:  # no targets to match for
                     continue
         return sessions
 
@@ -139,30 +138,33 @@ class LinuxISCSIapi(base.ConnectionManager):
                 no_comment.append(line)
         return no_comment
 
-    def _update_node_parameter(self, name, value):
+    def _update_node_parameter(self, name, value, target):
         # TODO: support per target config
-        args = ['iscsiadm', '-m', 'node', '-o', 'update', '-n', name, '-v', value]
+        args = ['iscsiadm', '-m', 'node', '-o', 'update', '-n', name, '-v', value, '-T', target]
         if "password" not in name:
             logger.debug("running {}".format(args))
         return execute_assert_success(args)
 
-    def _set_auth(self, auth):
+    def _set_auth(self, auth, target):
+        target_iqn = target.get_iqn()
         if isinstance(auth, iscsiapi_auth.ChapAuth):
-            self._update_node_parameter('node.session.auth.authmethod', 'CHAP')
-            self._update_node_parameter('node.session.auth.username', auth.get_inbound_username())
-            self._update_node_parameter('node.session.auth.password', auth.get_inbound_secret())
+            self._update_node_parameter('node.session.auth.authmethod', 'CHAP', target_iqn)
+            self._update_node_parameter('node.session.auth.username', auth.get_inbound_username(), target_iqn)
+            self._update_node_parameter('node.session.auth.password', auth.get_inbound_secret(), target_iqn)
+            self._update_node_parameter('node.session.auth.username_in', '', target_iqn)
+            self._update_node_parameter('node.session.auth.password_in', '', target_iqn)
         elif isinstance(auth, iscsiapi_auth.MutualChapAuth):
-            self._update_node_parameter('node.session.auth.authmethod', 'CHAP')
-            self._update_node_parameter('node.session.auth.username', auth.get_inbound_username())
-            self._update_node_parameter('node.session.auth.password', auth.get_inbound_secret())
-            self._update_node_parameter('node.session.auth.username_in', auth.get_outbound_username())
-            self._update_node_parameter('node.session.auth.password_in', auth.get_outbound_secret())
+            self._update_node_parameter('node.session.auth.authmethod', 'CHAP', target_iqn)
+            self._update_node_parameter('node.session.auth.username', auth.get_inbound_username(), target_iqn)
+            self._update_node_parameter('node.session.auth.password', auth.get_inbound_secret(), target_iqn)
+            self._update_node_parameter('node.session.auth.username_in', auth.get_outbound_username(), target_iqn)
+            self._update_node_parameter('node.session.auth.password_in', auth.get_outbound_secret(), target_iqn)
         elif isinstance(auth, iscsiapi_auth.NoAuth):
-            self._update_node_parameter('node.session.auth.authmethod', 'None')
-            self._update_node_parameter('node.session.auth.username', "")
-            self._update_node_parameter('node.session.auth.password', "")
-            self._update_node_parameter('node.session.auth.username_in', "")
-            self._update_node_parameter('node.session.auth.password_in', "")
+            self._update_node_parameter('node.session.auth.authmethod', 'None', target_iqn)
+            self._update_node_parameter('node.session.auth.username', "", target_iqn)
+            self._update_node_parameter('node.session.auth.password', "", target_iqn)
+            self._update_node_parameter('node.session.auth.username_in', "", target_iqn)
+            self._update_node_parameter('node.session.auth.password_in', "", target_iqn)
 
     def get_discovered_targets(self):
         iqn_list = []
@@ -172,7 +174,10 @@ class LinuxISCSIapi(base.ConnectionManager):
         uniq_iqn = list(set(iqn_list))
         for iqn in uniq_iqn:
             endpoints = []
-            discovery_endpoint = base.Endpoint(self._parse_discovery_address(iqn), 3260)  # TODO parse point
+            discovery_address = self._parse_discovery_address(iqn)
+            if discovery_address is None:  # possible race
+                continue
+            discovery_endpoint = base.Endpoint(discovery_address, 3260)  # TODO parse port
             for connectivity in self._parse_connection_config():
                 if connectivity['iqn'] == iqn:
                     endpoints.append(base.Endpoint(connectivity['dst_ip'], connectivity['dst_port']))
@@ -182,16 +187,16 @@ class LinuxISCSIapi(base.ConnectionManager):
     def get_source_iqn(self):
         '''return infi.dtypes.iqn type iqn if iscsi initiator file exists
         '''
+        from .iscsi_exceptions import NotReadyException
         import re
         from os.path import isfile
-        if isfile(ISCSI_INITIATOR_IQN_FILE):
-            with open(ISCSI_INITIATOR_IQN_FILE, 'r') as fd:
-                data = self._remove_comments(fd.readlines())
-                assert len(data) == 1, "something isn't right with {}".format(ISCSI_INITIATOR_IQN_FILE)
-                raw_iqn = re.split('InitiatorName=', data[0])
-                return IQN(raw_iqn[1].strip())
-        else:
-            raise
+        if not isfile(ISCSI_INITIATOR_IQN_FILE):
+            raise NotReadyException("iSCSI initiator IQN file not found")
+        with open(ISCSI_INITIATOR_IQN_FILE, 'r') as fd:
+            data = self._remove_comments(fd.readlines())
+            assert len(data) == 1, "something isn't right with {}".format(ISCSI_INITIATOR_IQN_FILE)
+            raw_iqn = re.split('InitiatorName=', data[0])
+            return IQN(raw_iqn[1].strip())
 
     def set_source_iqn(self, iqn):
         '''receives a string, validates it's an iqn then set it to the host
@@ -228,7 +233,7 @@ class LinuxISCSIapi(base.ConnectionManager):
     def login(self, target, endpoint, auth=None, num_of_connections=1):
         if auth is None:
             auth = iscsiapi_auth.NoAuth()
-        self._set_auth(auth)
+        self._set_auth(auth, target)
         args = ['iscsiadm', '-m', 'node', '-l', '-T', target.get_iqn(), '-p',
         endpoint.get_ip_address() + ':' + endpoint.get_port()]
         execute_assert_success(args)
@@ -239,7 +244,7 @@ class LinuxISCSIapi(base.ConnectionManager):
     def login_all(self, target, auth=None):
         if auth is None:
             auth = iscsiapi_auth.NoAuth()
-        self._set_auth(auth)
+        self._set_auth(auth, target)
         args = ['iscsiadm', '-m', 'node', '-l', '-T', str(target.get_iqn())]
         execute_assert_success(args)
         return self.get_sessions(target=target)
