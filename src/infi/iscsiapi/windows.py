@@ -52,7 +52,7 @@ class WindowsISCSIapi(base.ConnectionManager):
         client = WmiClient('root\\wmi')
         for item in client.execute_query("SELECT * FROM MSIscsiInitiator_MethodClass"):
             item.ExecMethod_('RefreshTargetList', None)
-
+       
     def _execute_discover(self, ip_address, port):
         from .iscsi_exceptions import DiscoveryFailed
         try:
@@ -111,6 +111,7 @@ class WindowsISCSIapi(base.ConnectionManager):
         discovery_endpoint = base.Endpoint(ip_address, port)
         for target in self.get_discovered_targets():
             if target.get_discovery_endpoint() == discovery_endpoint:
+                self._refresh_wmi_db()
                 already_discoverd = True
                 break
         if not already_discoverd:
@@ -268,9 +269,8 @@ class WindowsISCSIapi(base.ConnectionManager):
     def get_discovered_targets(self):
         '''return a list of discovered target objects
         '''
-        # TODO add chap support
-        self._refresh_wmi_db()
         import re
+        logger.info("get_discovered_targets")
         discovered_targets = []
         client = WmiClient('root\\wmi')
         for query in client.execute_query('SELECT * from MSIscsiInitiator_TargetClass'):
@@ -299,8 +299,7 @@ class WindowsISCSIapi(base.ConnectionManager):
         # assumes only one connection over each session ( conn_0 ) 3.0 Infinibox limit
         # TODO: when InfiniBox will support MCS need to modify this code
         from infi.dtypes.hctl import HCT
-        self._refresh_wmi_db()
-
+        logger.info("get_sessions(target={!r}".format(target))
         def _get_sessions_of_target(target, retries=3):
             from .iscsi_exceptions import WMIConnectionInformationMissing
             if not retries:
@@ -345,8 +344,7 @@ class WindowsISCSIapi(base.ConnectionManager):
     def rescan(self):
         '''rescan all available sessions
         '''
-        logger.info("you just ran iscsi rescan, in windows it does nothing")
-        return
+        self._refresh_wmi_db()
 
     def undiscover(self, target=None):
         '''logout and delete all discovered sessions for a target or for all targets
@@ -366,7 +364,6 @@ class WindowsISCSIapi(base.ConnectionManager):
                 logger.info("running {}".format(args))
                 execute(args)
         self._refresh_wmi_db()
-
 
 class MicrosoftSoftwareInitiator(base.SoftwareInitiator):
     def is_installed(self):
