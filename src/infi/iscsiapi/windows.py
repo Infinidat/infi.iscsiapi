@@ -52,7 +52,7 @@ class WindowsISCSIapi(base.ConnectionManager):
         client = WmiClient('root\\wmi')
         for item in client.execute_query("SELECT * FROM MSIscsiInitiator_MethodClass"):
             item.ExecMethod_('RefreshTargetList', None)
-       
+
     def _execute_discover(self, ip_address, port):
         from .iscsi_exceptions import DiscoveryFailed
         try:
@@ -323,7 +323,7 @@ class WindowsISCSIapi(base.ConnectionManager):
                 target_address = conn_0.Properties_.Item('TargetAddress').Value
                 target_port = conn_0.Properties_.Item('TargetPort').Value
 
-                if session.Properties_.Item('Devices').Value is None:
+                if not session.Properties_.Item('Devices').Value:
                     hct = HCT(-1, 0, -1)
                 else:
                     devices = list(session.Properties_.Item('Devices').Value)
