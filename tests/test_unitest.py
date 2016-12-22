@@ -34,7 +34,9 @@ class ISCSIapiHostTestCase(TestCase):
                 system.purge()
 
         cls.skip_if_not_available()
-        cls.system = cls.system_factory.allocate_infinidat_system(labels=(['ci-ready', 'iscsi']))
+        cls.system = cls.system_factory.allocate_infinidat_system(labels=(['ci-ready', 'iscsi']),
+                                                                  purpose_string="iscsiapi Tests",
+                                                                  timeout_in_seconds=3600 + (60 * 5) )
         _purge_and_retry(cls.system)
         cls.system_sdk = cls.system.get_infinisdk()
         cls.system_sdk.login()
