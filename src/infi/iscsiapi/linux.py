@@ -165,6 +165,11 @@ class LinuxISCSIapi(base.ConnectionManager):
             self._update_node_parameter('node.session.auth.password', "", target_iqn)
             self._update_node_parameter('node.session.auth.username_in', "", target_iqn)
             self._update_node_parameter('node.session.auth.password_in', "", target_iqn)
+        else:
+            return
+        # on some distributions (e.g. SUSE12), iscsiadm doesn't detect the auth changes automatically
+        # and login may use cached secrets; running discovery again seemsto solve it
+        self.discover(target.get_discovery_endpoint().get_ip_address(), target.get_discovery_endpoint().get_port())
 
     def get_discovered_targets(self):
         iqn_list = []
