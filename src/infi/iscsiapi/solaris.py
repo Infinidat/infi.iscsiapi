@@ -136,6 +136,9 @@ class SolarisISCSIapi(base.ConnectionManager):
         else:
             raise RuntimeError("Couldn't find IQN from iscsiadm output, got {!r}".format(process.get_stdout()))
 
+    def reset_source_iqn(self):
+        pass
+
     def set_source_iqn(self, iqn):
         '''receives a string, validates it's an iqn then set it to the host
         NOTE: this restart the iscsi service and may fail active sessions !

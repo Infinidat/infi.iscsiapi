@@ -192,15 +192,38 @@ class ISCSIapiHostTestCase(TestCase):
             iscsi_sw.install()
         self.assertNotEqual(iscsi_sw.is_installed, True)
 
-    def test_02_iscsiapi_set_source_iqn(self):
-        from infi.dtypes.iqn import IQN
+    def test_020_iscsiapi_set_source_iqn(self):
+        from infi.dtypes.iqn import IQN, InvalidIQN
+        if get_platform_string().startswith('windows'):
+            self.iscsiapi.reset_source_iqn()
         new_iqn_string = 'iqn.1991-05.com.microsoft:asdasd'
+        invalid_iqn_type_a = '1'
+        invalid_iqn_type_b = ''
         original_iqn = self.iscsiapi.get_source_iqn()
         self.iscsiapi.set_source_iqn(new_iqn_string)
         self.assertEqual(type(self.iscsiapi.get_source_iqn()), IQN)
         self.assertEqual(str(self.iscsiapi.get_source_iqn()), new_iqn_string)
+        self.assertRaises(InvalidIQN, self.iscsiapi.set_source_iqn, invalid_iqn_type_a)
+        self.assertRaises(InvalidIQN, self.iscsiapi.set_source_iqn, invalid_iqn_type_b)
         self.iscsiapi.set_source_iqn(str(original_iqn))
         self.assertEqual(str(self.iscsiapi.get_source_iqn()), original_iqn)
+
+    def test_021_iscsiapi_reset_source_iqn_linux(self):
+        if not get_platform_string().startswith('linux'):
+            raise SkipTest("linux test skipping other platforms")
+        old_iqn = self.iscsiapi.get_source_iqn()
+        self.iscsiapi.reset_source_iqn()  #  in linux every run generate a different IQN
+        self.assertNotEqual(old_iqn, self.iscsiapi.get_source_iqn())
+
+    def test_022_iscsiapi_reset_source_iqn_windows(self):
+        from infi.execute import execute_assert_success
+        from infi.dtypes.iqn import IQN, InvalidIQN
+        if not get_platform_string().startswith('windows'):
+            raise SkipTest("windows test skipping other platforms")
+        execute_assert_success(['iscsicli', 'NodeName', 'invalid.iqn'])
+        self.assertRaises(InvalidIQN, self.iscsiapi.get_source_iqn)
+        self.iscsiapi.reset_source_iqn()
+        self.assertEqual(IQN, type(self.iscsiapi.get_source_iqn()))
 
     def test_03_discover_undiscover(self):
         self.iscsiapi.undiscover()

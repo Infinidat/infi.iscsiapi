@@ -13,6 +13,9 @@ if 'ubuntu' in get_platform_string() or 'suse' in get_platform_string():
 else:
     ISCSI_CONNECTION_CONFIG = '/var/lib/iscsi/nodes'
 ISCSI_INITIATOR_IQN_FILE = '/etc/iscsi/initiatorname.iscsi'
+GENERATE_COMMAND = 'iscsi-iname'
+
+# pass on all functions and make sure cli commands also go to log
 
 class LinuxISCSIapi(base.ConnectionManager):
 
@@ -122,11 +125,11 @@ class LinuxISCSIapi(base.ConnectionManager):
         return sessions
 
     def _reload_iscsid_service(self):
+        logger.info("reloading iscsi service")
         if 'centos' in get_platform_string():
             execute_assert_success(['service', 'iscsid', 'restart'])
         if 'ubuntu' in get_platform_string():
             execute_assert_success(['service', 'open-iscsi', 'restart'])
-
 
     def _remove_comments(self, list_of_strings):
         '''get list of strings and return list of strings without the commented out ones'''
@@ -143,6 +146,9 @@ class LinuxISCSIapi(base.ConnectionManager):
         args = ['iscsiadm', '-m', 'node', '-o', 'update', '-n', name, '-v', value, '-T', target]
         if "password" not in name:
             logger.debug("running {}".format(args))
+        else:
+            logger.debug("running {}".format(args).replace(value, '***'))
+
         return execute_assert_success(args)
 
     def _set_auth(self, auth, target):
@@ -165,6 +171,13 @@ class LinuxISCSIapi(base.ConnectionManager):
             self._update_node_parameter('node.session.auth.password', "", target_iqn)
             self._update_node_parameter('node.session.auth.username_in', "", target_iqn)
             self._update_node_parameter('node.session.auth.password_in', "", target_iqn)
+
+    def _get_old_iqn(self):
+        from os.path import isfile
+        if not isfile(ISCSI_INITIATOR_IQN_FILE):
+            return
+        with open(ISCSI_INITIATOR_IQN_FILE, 'r') as fd:
+            return fd.readlines()
 
     def get_discovered_targets(self):
         iqn_list = []
@@ -198,6 +211,15 @@ class LinuxISCSIapi(base.ConnectionManager):
             raw_iqn = re.split('InitiatorName=', data[0])
             return IQN(raw_iqn[1].strip())
 
+    def reset_source_iqn(self):
+        '''use in case iqn is invalid and regeneration of it is required'''
+        process =  execute_assert_success([GENERATE_COMMAND])
+        iqn = process.get_stdout().strip()
+        _ = IQN(iqn) #  validating new IQN
+        logger.info("Regeneration of iqn was initiated, old file {}".format(ISCSI_INITIATOR_IQN_FILE) +
+                    "had this data in it {!r}, new iqn is:{}".format(self._get_old_iqn(), iqn))
+        self.set_source_iqn(iqn)
+
     def set_source_iqn(self, iqn):
         '''receives a string, validates it's an iqn then set it to the host
         NOTE: this restart the iscsi service and may fail active sessions !
@@ -205,14 +227,11 @@ class LinuxISCSIapi(base.ConnectionManager):
         import shutil
         from os.path import isfile
         _ = IQN(iqn)   # checks iqn is valid
-        _ = self.get_source_iqn()  # check file exist and valid
-        if not isfile(ISCSI_INITIATOR_IQN_FILE + '.orig'):
-            shutil.copy(ISCSI_INITIATOR_IQN_FILE, ISCSI_INITIATOR_IQN_FILE + '.orig')
+        self._get_old_iqn()
         replacement_strig = 'InitiatorName=' + iqn
         with open(ISCSI_INITIATOR_IQN_FILE, 'w') as fd:
             fd.write(replacement_strig + "\n")
         logger.info("iqn was replaced to {}".format(iqn))
-        logger.info("reloading iscsi service")
         self._reload_iscsid_service()
 
     def discover(self, ip_address, port=3260):
@@ -242,6 +261,7 @@ class LinuxISCSIapi(base.ConnectionManager):
                 return session
 
     def login_all(self, target, auth=None):
+        # add print
         if auth is None:
             auth = iscsiapi_auth.NoAuth()
         self._set_auth(auth, target)
