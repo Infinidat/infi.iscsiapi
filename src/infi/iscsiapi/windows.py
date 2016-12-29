@@ -236,6 +236,9 @@ class WindowsISCSIapi(base.ConnectionManager):
         iqn = query[0].Properties_.Item("ISCSINodeName").Value
         return IQN(iqn)
 
+    def reset_source_iqn(self):
+        execute_assert_success(['iscsicli', 'NodeName', '*'])
+
     def set_source_iqn(self, iqn):
         '''receive an iqn as a string, verify it's valid and set it.
         returns iqn type of the new IQN or None if fails
