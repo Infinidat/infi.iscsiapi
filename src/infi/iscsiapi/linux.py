@@ -159,7 +159,7 @@ class LinuxISCSIapi(base.ConnectionManager):
             logger.debug("running {}".format(args))
         else:
             logger.debug("running {}".format(args).replace(value, '***' if value else ''))
-        return _execute_assert_success(args)  # we don't want to log the password
+        return execute_assert_success(args)  # we don't want to log the password
 
     def _set_auth(self, auth, target):
         target_iqn = target.get_iqn()
