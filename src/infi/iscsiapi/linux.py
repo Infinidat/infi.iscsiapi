@@ -147,7 +147,7 @@ class LinuxISCSIapi(base.ConnectionManager):
         if "password" not in name:
             logger.debug("running {}".format(args))
         else:
-            logger.debug("running {}".format(args).replace(value, '***'))
+            logger.debug("running {}".format(args).replace(value, '***' if value else ''))
 
         return execute_assert_success(args)
 
