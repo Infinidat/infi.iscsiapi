@@ -133,6 +133,10 @@ class ConnectionManager(object):
     def get_source_iqn(self):
         raise NotImplementedError()
 
+    def reset_source_iqn(self):
+        '''use incase iqn is invalid and regeneration of it is required'''
+        raise NotImplementedError()
+
     def set_source_iqn(self, iqn):
         '''receive an iqn as a string, verify it's valid and set it.
         returns iqn type of the new IQN or None if fails

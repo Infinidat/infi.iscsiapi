@@ -236,6 +236,9 @@ class WindowsISCSIapi(base.ConnectionManager):
         iqn = query[0].Properties_.Item("ISCSINodeName").Value
         return IQN(iqn)
 
+    def reset_source_iqn(self):
+        execute_assert_success(['iscsicli', 'NodeName', '*'])
+
     def set_source_iqn(self, iqn):
         '''receive an iqn as a string, verify it's valid and set it.
         returns iqn type of the new IQN or None if fails
@@ -269,7 +272,6 @@ class WindowsISCSIapi(base.ConnectionManager):
     def get_discovered_targets(self):
         '''return a list of discovered target objects
         '''
-        import re
         logger.info("get_discovered_targets")
         discovered_targets = []
         client = WmiClient('root\\wmi')
@@ -282,13 +284,17 @@ class WindowsISCSIapi(base.ConnectionManager):
                     if endpoint not in endpoints:
                         endpoints.append(endpoint)
 
-            regex = re.compile(r'(?P<ip>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\ (?P<port>\d+)')
-            discovery_endpoint = regex.search(query.Properties_.Item('DiscoveryMechanism').Value).groupdict()
-            if discovery_endpoint == []:
-                raise RuntimeError("couldn't find an expected wmi object")
-            discovery_endpoint['port'] = int(str(discovery_endpoint['port']), base=10)
-            target = base.Target(endpoints,
-                                 base.Endpoint(discovery_endpoint['ip'], str(discovery_endpoint['port'])), iqn)
+            # u'SendTargets:*test 0003260 ROOT\\ISCSIPRT\\0000_0 '
+            discovery_mechanism = query.Properties_.Item('DiscoveryMechanism').Value
+            if not discovery_mechanism:
+                logger.debug("invalid discovery mechanism: {!r}".format(discovery_mechanism))
+                continue
+            if discovery_mechanism.strip().count(' ') != 2:
+                logger.debug("invalid discovery mechanism: {!r}".format(discovery_mechanism))
+                continue
+            discovery_endpoint_ip, discovery_endpoint_port, _ = discovery_mechanism.strip().split()
+            discovery_endpoint = base.Endpoint(discovery_endpoint_ip.split(':')[-1], int(str(discovery_endpoint_port), base=10))
+            target = base.Target(endpoints, discovery_endpoint, iqn)
             if target not in discovered_targets:
                 discovered_targets.append(target)
         return discovered_targets
