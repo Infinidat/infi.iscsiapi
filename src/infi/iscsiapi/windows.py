@@ -286,9 +286,14 @@ class WindowsISCSIapi(base.ConnectionManager):
                         endpoints.append(endpoint)
 
             regex = re.compile(r'(?P<ip>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\ (?P<port>\d+)')
-            discovery_endpoint = regex.search(query.Properties_.Item('DiscoveryMechanism').Value).groupdict()
+            discovery_mechanism = query.Properties_.Item('DiscoveryMechanism').Value
+            if regex.search(discovery_mechanism) is None:
+                logger.exception("couldn't find an expected wmi object")
+                continue
+            discovery_endpoint = regex.search(discovery_mechanism).groupdict()
             if discovery_endpoint == []:
-                raise RuntimeError("couldn't find an expected wmi object")
+                logger.exception("couldn't parse the discovery endpoint")
+                continue
             discovery_endpoint['port'] = int(str(discovery_endpoint['port']), base=10)
             target = base.Target(endpoints,
                                  base.Endpoint(discovery_endpoint['ip'], str(discovery_endpoint['port'])), iqn)
