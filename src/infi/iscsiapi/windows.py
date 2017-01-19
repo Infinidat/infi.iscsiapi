@@ -272,7 +272,6 @@ class WindowsISCSIapi(base.ConnectionManager):
     def get_discovered_targets(self):
         '''return a list of discovered target objects
         '''
-        import re
         logger.info("get_discovered_targets")
         discovered_targets = []
         client = WmiClient('root\\wmi')
@@ -285,15 +284,16 @@ class WindowsISCSIapi(base.ConnectionManager):
                     if endpoint not in endpoints:
                         endpoints.append(endpoint)
 
+            # u'SendTargets:*test 0003260 ROOT\\ISCSIPRT\\0000_0 '
             discovery_mechanism = query.Properties_.Item('DiscoveryMechanism').Value
             if not discovery_mechanism:
                 logger.debug("invalid discovery mechanism: {!r}".format(discovery_mechanism))
                 continue
-            if discovery_mechanism.count(' ') != 1:
+            if discovery_mechanism.strip().count(' ') != 2:
                 logger.debug("invalid discovery mechanism: {!r}".format(discovery_mechanism))
                 continue
-            discovery_endpoint_ip, discovery_endpoint_port = discovery_mechanism.split()
-            discovery_endpoint = base.Endpoint(discovery_endpoint_ip, int(str(discovery_endpoint_port), base=10))
+            discovery_endpoint_ip, discovery_endpoint_port, _ = discovery_mechanism.strip().split()
+            discovery_endpoint = base.Endpoint(discovery_endpoint_ip.split(':')[-1], int(str(discovery_endpoint_port), base=10))
             target = base.Target(endpoints, discovery_endpoint, iqn)
             if target not in discovered_targets:
                 discovered_targets.append(target)
