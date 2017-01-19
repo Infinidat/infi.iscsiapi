@@ -285,18 +285,16 @@ class WindowsISCSIapi(base.ConnectionManager):
                     if endpoint not in endpoints:
                         endpoints.append(endpoint)
 
-            regex = re.compile(r'(?P<ip>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\ (?P<port>\d+)')
             discovery_mechanism = query.Properties_.Item('DiscoveryMechanism').Value
-            if regex.search(discovery_mechanism) is None:
-                logger.exception("couldn't find an expected wmi object")
+            if not discovery_mechanism:
+                logger.debug("invalid discovery mechanism: {!r}".format(discovery_mechanism))
                 continue
-            discovery_endpoint = regex.search(discovery_mechanism).groupdict()
-            if discovery_endpoint == []:
-                logger.exception("couldn't parse the discovery endpoint")
+            if discovery_mechanism.count(' ') != 1:
+                logger.debug("invalid discovery mechanism: {!r}".format(discovery_mechanism))
                 continue
-            discovery_endpoint['port'] = int(str(discovery_endpoint['port']), base=10)
-            target = base.Target(endpoints,
-                                 base.Endpoint(discovery_endpoint['ip'], str(discovery_endpoint['port'])), iqn)
+            discovery_endpoint_ip, discovery_endpoint_port = discovery_mechanism.split()
+            discovery_endpoint = base.Endpoint(discovery_endpoint_ip, int(str(discovery_endpoint_port), base=10))
+            target = base.Target(endpoints, discovery_endpoint, iqn)
             if target not in discovered_targets:
                 discovered_targets.append(target)
         return discovered_targets
