@@ -102,6 +102,20 @@ class WindowsISCSIapi(base.ConnectionManager):
         if isinstance(auth, iscsiapi_auth.NoAuth):
             return ISCSI_NO_AUTH_TYPE
 
+    def _remove_persistent_target(self, target):
+        self._create_initiator_obj_if_needed()
+        for endpoint in target.get_endpoints():
+            args = ['iscsicli', 'RemovePersistentTarget', str(self._initiator.get_initiator_name()), target.get_iqn(),
+                                    '*', str(endpoint.get_ip_address()), str(endpoint.get_port())]
+            logger.info("running {}".format(args))
+            execute(args)
+
+    def _reomve_target_portal(self, target):
+        for endpoint in target.get_endpoints():
+            args = ['iscsicli', 'RemoveTargetPortal', str(endpoint.get_ip_address()), str(endpoint.get_port())]
+            logger.info("running {}".format(args))
+            execute(args)
+
     def discover(self, ip_address, port=3260):
         '''perform an iscsi discovery to an ip address
         '''
@@ -353,18 +367,13 @@ class WindowsISCSIapi(base.ConnectionManager):
         '''
         if target:
             self.logout_all(target)
-            for endpoint in self._get_discovery_endpoints():
-                if endpoint in target.get_endpoints():
-                    args = ['iscsicli', 'RemoveTargetPortal', str(endpoint.get_ip_address()), str(endpoint.get_port())]
-                    logger.info("running {}".format(args))
-                    execute(args)
+            self._reomve_target_portal(target)
+            self._remove_persistent_target(target)
         else:
             for target in self.get_discovered_targets():
                 self.logout_all(target)
-            for endpoint in self._get_discovery_endpoints():
-                args = ['iscsicli', 'RemoveTargetPortal', str(endpoint.get_ip_address()), str(endpoint.get_port())]
-                logger.info("running {}".format(args))
-                execute(args)
+                self._reomve_target_portal(target)
+                self._remove_persistent_target(target)
         self._refresh_wmi_db()
 
 class MicrosoftSoftwareInitiator(base.SoftwareInitiator):
