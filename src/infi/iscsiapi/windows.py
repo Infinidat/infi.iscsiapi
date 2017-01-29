@@ -133,15 +133,11 @@ class WindowsISCSIapi(base.ConnectionManager):
                 return session
 
     def _iscsicli_login(self, login_command, target, endpoint, auth=None, num_of_connections=1):
-        def _remove_outbound_secret():
-            cmd = ['iscsicli', 'CHAPSecret', '*']
-            execute(cmd)
 
         auth_type = self._return_auth_type(auth)
         if auth_type == ISCSI_CHAP_AUTH_TYPE:
             username = auth.get_inbound_username()
             password = auth.get_inbound_secret()
-            _remove_outbound_secret()
         elif auth_type == ISCSI_MUTUAL_CHAP_AUTH_TYPE:
             username = auth.get_inbound_username()
             password = auth.get_inbound_secret()
@@ -150,7 +146,7 @@ class WindowsISCSIapi(base.ConnectionManager):
         elif auth_type == ISCSI_NO_AUTH_TYPE:
             username = '*'
             password = '*'
-            _remove_outbound_secret()
+
         # Due to a bug only in 2008 multiple sessions isn't handled ok unless initiator name is monitored
         # Therefore we don't use Qlogin, Details:
         # https://social.technet.microsoft.com/Forums/office/en-US/4b2420d6-0f28-4d12-928d-3920896f582d/iscsi-initiator-target-not-reconnecting-on-reboot?forum=winserverfiles
