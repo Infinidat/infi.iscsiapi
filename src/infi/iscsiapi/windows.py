@@ -105,7 +105,7 @@ class WindowsISCSIapi(base.ConnectionManager):
     def _remove_persistent_target(self, target):
         self._create_initiator_obj_if_needed()
         for endpoint in target.get_endpoints():
-            args = ['iscsicli', 'RemovePersistentTarget', str(self._initiator.get_initiator_name()), target.get_iqn(),
+            args = ['iscsicli', 'RemovePersistentTarget', str(self._initiator.get_initiator_name()), str(target.get_iqn()),
                                     '*', str(endpoint.get_ip_address()), str(endpoint.get_port())]
             logger.info("running {}".format(args))
             execute(args)
