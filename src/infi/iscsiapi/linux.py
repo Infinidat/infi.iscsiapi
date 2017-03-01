@@ -26,16 +26,6 @@ class LinuxISCSIapi(base.ConnectionManager):
         logger.debug("Running: {}".format(cmd))
         return execute_assert_success(cmd)
 
-    def _parse_iscsiadm_session_output(self, output):
-        '''return list of dicts which contain the parsed iscsiadm output
-        '''
-        import re
-        availble_targets = []
-        regex = re.compile(r'(?P<dst_ip>\d+\.\d+\.\d+\.\d+)\:(?P<dst_port>\d+)\,(?P<no_conn>\d+)\ (?P<iqn>.+)')
-        for session in output.splitlines():
-            availble_targets.append(regex.search(session).groupdict())
-        return availble_targets
-
     def _parse_connection_config(self):
         import os
         import re
@@ -47,8 +37,8 @@ class LinuxISCSIapi(base.ConnectionManager):
         for target in os.listdir(ISCSI_CONNECTION_CONFIG):
             iqn = target
             for end_point in os.listdir(ISCSI_CONNECTION_CONFIG + '/' + target):
-                regex = re.compile(r'(?P<dst_ip>\d+\.\d+\.\d+\.\d+)\,(?P<dst_port>\d+)\,(?P<no_conn>\d+)')
-                session = regex.search(end_point).groupdict()
+                regex = re.compile(r'(?P<dst_ip>\d+\.\d+\.\d+\.\d+)\,(?P<dst_port>\d+)')
+                session = regex.match(end_point).groupdict()
                 session['iqn'] = iqn
                 availble_targets.append(session)
         return availble_targets

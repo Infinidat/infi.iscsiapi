@@ -102,6 +102,20 @@ class WindowsISCSIapi(base.ConnectionManager):
         if isinstance(auth, iscsiapi_auth.NoAuth):
             return ISCSI_NO_AUTH_TYPE
 
+    def _remove_persistent_target(self, target):
+        self._create_initiator_obj_if_needed()
+        for endpoint in target.get_endpoints():
+            args = ['iscsicli', 'RemovePersistentTarget', str(self._initiator.get_initiator_name()), str(target.get_iqn()),
+                                    '*', str(endpoint.get_ip_address()), str(endpoint.get_port())]
+            logger.info("running {}".format(args))
+            execute(args)
+
+    def _reomve_target_portal(self, target):
+        for endpoint in target.get_endpoints():
+            args = ['iscsicli', 'RemoveTargetPortal', str(endpoint.get_ip_address()), str(endpoint.get_port())]
+            logger.info("running {}".format(args))
+            execute(args)
+
     def discover(self, ip_address, port=3260):
         '''perform an iscsi discovery to an ip address
         '''
@@ -133,15 +147,11 @@ class WindowsISCSIapi(base.ConnectionManager):
                 return session
 
     def _iscsicli_login(self, login_command, target, endpoint, auth=None, num_of_connections=1):
-        def _remove_outbound_secret():
-            cmd = ['iscsicli', 'CHAPSecret', '*']
-            execute(cmd)
 
         auth_type = self._return_auth_type(auth)
         if auth_type == ISCSI_CHAP_AUTH_TYPE:
             username = auth.get_inbound_username()
             password = auth.get_inbound_secret()
-            _remove_outbound_secret()
         elif auth_type == ISCSI_MUTUAL_CHAP_AUTH_TYPE:
             username = auth.get_inbound_username()
             password = auth.get_inbound_secret()
@@ -150,7 +160,7 @@ class WindowsISCSIapi(base.ConnectionManager):
         elif auth_type == ISCSI_NO_AUTH_TYPE:
             username = '*'
             password = '*'
-            _remove_outbound_secret()
+
         # Due to a bug only in 2008 multiple sessions isn't handled ok unless initiator name is monitored
         # Therefore we don't use Qlogin, Details:
         # https://social.technet.microsoft.com/Forums/office/en-US/4b2420d6-0f28-4d12-928d-3920896f582d/iscsi-initiator-target-not-reconnecting-on-reboot?forum=winserverfiles
@@ -357,18 +367,13 @@ class WindowsISCSIapi(base.ConnectionManager):
         '''
         if target:
             self.logout_all(target)
-            for endpoint in self._get_discovery_endpoints():
-                if endpoint in target.get_endpoints():
-                    args = ['iscsicli', 'RemoveTargetPortal', str(endpoint.get_ip_address()), str(endpoint.get_port())]
-                    logger.info("running {}".format(args))
-                    execute(args)
+            self._reomve_target_portal(target)
+            self._remove_persistent_target(target)
         else:
             for target in self.get_discovered_targets():
                 self.logout_all(target)
-            for endpoint in self._get_discovery_endpoints():
-                args = ['iscsicli', 'RemoveTargetPortal', str(endpoint.get_ip_address()), str(endpoint.get_port())]
-                logger.info("running {}".format(args))
-                execute(args)
+                self._reomve_target_portal(target)
+                self._remove_persistent_target(target)
         self._refresh_wmi_db()
 
 class MicrosoftSoftwareInitiator(base.SoftwareInitiator):
