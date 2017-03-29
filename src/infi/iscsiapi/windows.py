@@ -316,11 +316,8 @@ class WindowsISCSIapi(base.ConnectionManager):
         # TODO: when InfiniBox will support MCS need to modify this code
         from infi.dtypes.hctl import HCT
         logger.info("get_sessions(target={!r}".format(target))
-        def _get_sessions_of_target(target, retries=3):
-            from .iscsi_exceptions import WMIConnectionInformationMissing
-            if not retries:
-                raise WMIConnectionInformationMissing()
 
+        def _get_sessions_of_target(target):
             client = WmiClient('root\\wmi')
             wql = "SELECT * from MSiSCSIInitiator_SessionClass where TargetName='%s'" % str(target.get_iqn())
             query = client.execute_query(wql)
@@ -328,10 +325,11 @@ class WindowsISCSIapi(base.ConnectionManager):
             for session in query:
                 hct = None
                 uid = session.Properties_.Item('SessionId').Value
+                if not uid:
+                    continue
                 connections = session.Properties_.Item('ConnectionInformation').Value
                 if not connections:
-                    sleep(1)
-                    return _get_sessions_of_target(target, retries-1)
+                    continue
 
                 conn_0 = connections[0]
                 source_ip = conn_0.Properties_.Item('InitiatorAddress').Value
