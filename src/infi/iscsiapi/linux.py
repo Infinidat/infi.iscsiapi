@@ -179,6 +179,11 @@ class LinuxISCSIapi(base.ConnectionManager):
         with open(ISCSI_INITIATOR_IQN_FILE, 'r') as fd:
             return fd.readlines()
 
+    def _session_already_active(self, target, target_endpoint):
+        for session in self.get_sessions(target=target):
+            if target_endpoint == session.get_target_endpoint():
+                return session
+
     def get_discovered_targets(self):
         iqn_list = []
         targets = []
@@ -253,19 +258,17 @@ class LinuxISCSIapi(base.ConnectionManager):
         if auth is None:
             auth = iscsiapi_auth.NoAuth()
         self._set_auth(auth, target)
-        args = ['iscsiadm', '-m', 'node', '-l', '-T', target.get_iqn(), '-p',
-        endpoint.get_ip_address() + ':' + endpoint.get_port()]
-        self._execute_assert_success(args)
+        if self._session_already_active(target, endpoint) is None:
+            args = ['iscsiadm', '-m', 'node', '-l', '-T', target.get_iqn(), '-p',
+            endpoint.get_ip_address() + ':' + endpoint.get_port()]
+            self._execute_assert_success(args)
         for session in self._get_sessions_using_sysfs():
             if session.get_target_endpoint() == endpoint:
                 return session
 
     def login_all(self, target, auth=None):
-        if auth is None:
-            auth = iscsiapi_auth.NoAuth()
-        self._set_auth(auth, target)
-        args = ['iscsiadm', '-m', 'node', '-l', '-T', str(target.get_iqn())]
-        self._execute_assert_success(args)
+        for endpoint in target.get_endpoints():
+            self.login(target, endpoint, auth)
         return self.get_sessions(target=target)
 
     def logout(self, session):
