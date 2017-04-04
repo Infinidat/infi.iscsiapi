@@ -159,6 +159,10 @@ class ISCSIapiHostTestCase(TestCase):
         with self._iscsi_connection_context(net_space, host, auth) as target:
             pass
 
+    def _assert_discovery_dual_login(self, net_space, host, auth):
+        with self._iscsi_connection_context(net_space, host, auth) as target:
+            self.iscsiapi.login_all(target, auth)
+
     def _assert_discovery_login_logout_consistent(self, net_space, host, auth):
         with self._iscsi_connection_context(net_space, host, auth) as target:
             self._service_stop_check_start_check(target)
@@ -248,6 +252,7 @@ class ISCSIapiHostTestCase(TestCase):
         self._assert_discovery_login_logout(net_space, host, auth)
         self._assert_discovery_login_logout(net_space, host, auth)
         self._assert_login_to_two_systems(net_space, host, auth, auth)
+        self._assert_discovery_dual_login(net_space, host, auth)
 
     def test_05_chap_login(self):
         if get_platform_string().startswith('solaris'):
