@@ -304,22 +304,5 @@ class ISCSIapiHostTestCase(TestCase):
             self._assert_login_to_two_systems_consistent(net_space, host, chap_auth1, chap_auth2)
             self._assert_login_to_two_systems_consistent(net_space, host, self.auth1, self.auth2)
 
-    def test_08_chap_to_mutual_chap(self):
-        if get_platform_string().startswith('solaris'):
-            raise SkipTest("iSCSI CHAP on Solaris not supported - INFINIBOX-25831")
-
-        net_space = self._get_system_net_space(self.system_sdk)
-        ibox = self.system_sdk
-        host = self._create_host(self.hostname)
-        auth = iscsi_auth.ChapAuth(INBOUND_USERNAME, INBOUND_SECRET)
-        self._change_auth_on_ibox(host, auth)
-        target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
-        self.iscsiapi.login_all(target, auth)
-        self._assert_number_of_action_sessions(target, len(target.get_endpoints()))
-        self._change_auth_on_ibox(host, self.auth1)
-        self.iscsiapi.login_all(target, self.auth1)
-        self._assert_number_of_action_sessions(target, len(target.get_endpoints()))
-
-
 import requests
 requests.packages.urllib3.disable_warnings()
