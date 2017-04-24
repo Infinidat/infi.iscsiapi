@@ -33,6 +33,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         self._execute_assert_n_log(cmd)
 
     def _how_many_connections_should_be_configured(self):
+        # needs rewrite if used ( 4.0 ), need to verify that first target is infinibox()
         max_endpoints = len(self.get_discovered_targets()[0].get_endpoints())
         for target in self.get_discovered_targets():
             if max_endpoints < len(target.get_endpoints()):

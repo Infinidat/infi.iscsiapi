@@ -8,6 +8,7 @@ from infi.iscsiapi import auth as iscsi_auth
 from infi.pyutils.contexts import contextmanager
 from time import sleep
 from logging import getLogger
+from platform import node
 
 INBOUND_USERNAME = "chapuser"
 INBOUND_SECRET = "chappass123467"
@@ -41,6 +42,7 @@ class ISCSIapiHostTestCase(TestCase):
         cls.system_sdk = cls.system.get_infinisdk()
         cls.system_sdk.login()
         cls.iscsiapi = infi.iscsiapi.get_iscsiapi()
+        cls.hostname = node().split('.')[0]
         cls.auth1 = iscsi_auth.MutualChapAuth(INBOUND_USERNAME, INBOUND_SECRET, OUTBOUND_USERNAME, OUTBOUND_SECRET)
         cls.auth2 = iscsi_auth.MutualChapAuth(INBOUND_USERNAME2, INBOUND_SECRET2, OUTBOUND_USERNAME2, OUTBOUND_SECRET2)
         if not setup_iscsi_network_interface_on_host():
@@ -159,6 +161,10 @@ class ISCSIapiHostTestCase(TestCase):
         with self._iscsi_connection_context(net_space, host, auth) as target:
             pass
 
+    def _assert_discovery_dual_login(self, net_space, host, auth):
+        with self._iscsi_connection_context(net_space, host, auth) as target:
+            self.iscsiapi.login_all(target, auth)
+
     def _assert_discovery_login_logout_consistent(self, net_space, host, auth):
         with self._iscsi_connection_context(net_space, host, auth) as target:
             self._service_stop_check_start_check(target)
@@ -242,12 +248,13 @@ class ISCSIapiHostTestCase(TestCase):
     def test_04_login(self):
         net_space = self._get_system_net_space(self.system_sdk)
         ibox = self.system_sdk
-        host = self._create_host("iscsi_testing_host")
+        host = self._create_host(self.hostname)
         auth = iscsi_auth.NoAuth()
 
         self._assert_discovery_login_logout(net_space, host, auth)
         self._assert_discovery_login_logout(net_space, host, auth)
         self._assert_login_to_two_systems(net_space, host, auth, auth)
+        self._assert_discovery_dual_login(net_space, host, auth)
 
     def test_05_chap_login(self):
         if get_platform_string().startswith('solaris'):
@@ -255,7 +262,7 @@ class ISCSIapiHostTestCase(TestCase):
 
         net_space = self._get_system_net_space(self.system_sdk)
         ibox = self.system_sdk
-        host = self._create_host("iscsi_testing_host")
+        host = self._create_host(self.hostname)
         auth1 = iscsi_auth.ChapAuth(INBOUND_USERNAME, INBOUND_SECRET)
         auth2 = iscsi_auth.ChapAuth(INBOUND_USERNAME2, INBOUND_SECRET2)
 
@@ -271,7 +278,7 @@ class ISCSIapiHostTestCase(TestCase):
 
         net_space = self._get_system_net_space(self.system_sdk)
         ibox = self.system_sdk
-        host = self._create_host("iscsi_testing_host")
+        host = self._create_host(self.hostname)
 
         self._assert_discovery_login_logout(net_space, host, self.auth1)
         self._assert_discovery_login_logout(net_space, host, self.auth1)
@@ -285,7 +292,7 @@ class ISCSIapiHostTestCase(TestCase):
         if get_platform_string().startswith('windows'):
             raise SkipTest("not available on this platform")
         net_space = self._get_system_net_space(self.system_sdk)
-        host = self._create_host("iscsi_testing_host")
+        host = self._create_host(self.hostname)
         no_auth = iscsi_auth.NoAuth()
         chap_auth1 = iscsi_auth.ChapAuth(INBOUND_USERNAME, INBOUND_SECRET)
         chap_auth2 = iscsi_auth.ChapAuth(INBOUND_USERNAME2, INBOUND_SECRET2)
