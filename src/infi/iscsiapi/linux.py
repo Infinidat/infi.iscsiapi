@@ -64,7 +64,6 @@ class LinuxISCSIapi(base.ConnectionManager):
     def _iter_sessions_in_sysfs(self):
         import os
         import re
-        from infi.os_info import get_platform_string
         from infi.dtypes.hctl import HCT
         from glob import glob
 
@@ -72,10 +71,9 @@ class LinuxISCSIapi(base.ConnectionManager):
             for session in glob(os.path.join(host, 'session*')):  # usually, one session per host
                 uid = re.split('^session', os.path.basename(session))[1]
 
-                if 'centos-5' in get_platform_string() or 'redhat-5' in get_platform_string():
-                    connections = glob(os.path.join(session, 'connection*', 'iscsi_connection*connection*'))
-                else:
-                    connections = glob(os.path.join(session, 'connection*', 'iscsi_connection', 'connection*'))
+                # some older versions of RHEL-based operating systems use the former path, others use the latter
+                connections = glob(os.path.join(session, 'connection*', 'iscsi_connection*connection*')) + \
+                              glob(os.path.join(session, 'connection*', 'iscsi_connection', 'connection*'))
 
                 for connection in connections:
                     try:
