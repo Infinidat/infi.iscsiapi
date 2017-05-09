@@ -37,7 +37,7 @@ class ISCSIapiHostTestCase(TestCase):
         cls.skip_if_not_available()
         cls.system = cls.system_factory.allocate_infinidat_system(labels=(['ci-ready', 'iscsi']),
                                                                   purpose_string="iscsiapi Tests",
-                                                                  timeout_in_seconds=3600 + (60 * 5) )
+                                                                  timeout_in_seconds=3600)
         _purge_and_retry(cls.system)
         cls.system_sdk = cls.system.get_infinisdk()
         cls.system_sdk.login()
@@ -118,6 +118,9 @@ class ISCSIapiHostTestCase(TestCase):
             logger.debug(command)
             logger.debug(check_output(command, shell=True))
 
+    def _get_infinibox_major_version(self, system):
+        return int(system.get_version()[0])
+
     def _get_system_net_space(self, system):
         '''Temp workaround unit this INFRADEV-7576 is fixed'''
         from infinisdk_internal.exceptions import NetworkConfigError
@@ -128,65 +131,72 @@ class ISCSIapiHostTestCase(TestCase):
             net_space = setup_iscsi_on_infinibox(system)
         return net_space
 
-    def _assert_number_of_action_sessions(self, target, expected):
+    def _assert_number_of_active_sessions(self, target, expected, ibox_version):
         if get_platform_string().startswith('solaris'):
+            ''' in infinbox verison 4.0 there is a chance that TPGT will be per network space INFINIBOX-27965
+                This effects only solaris so for now we override expected connections in solaris to fit the new behavior
+            '''
             self._solaris_debug_dump()
+            if ibox_version == 4 and expected != 0:
+                expected = 1
         actual = len(self.iscsiapi.get_sessions(target))
         message = 'We expected {0} connections to target {1} but found {2}'.format(expected, target.get_iqn(), actual)
         self.assertEqual(actual, expected, message)
 
-    def _service_stop_check_start_check(self, target):
+    def _service_stop_check_start_check(self, target, ibox_version):
         from control_iscsi_serivce import get_platform_specific_iscsi_service
         iscsi_service = get_platform_specific_iscsi_service()
         iscsi_service.stop()
-        self._assert_number_of_action_sessions(target, 0)
+        self._assert_number_of_active_sessions(target, 0, ibox_version)
         iscsi_service.start()
-        self._assert_number_of_action_sessions(target, len(target.get_endpoints()))
+        self._assert_number_of_active_sessions(target, len(target.get_endpoints()), ibox_version)
 
     @contextmanager
-    def _iscsi_connection_context(self, net_space, host, auth):
+    def _iscsi_connection_context(self, net_space, host, auth, ibox_version=3):
         self._change_auth_on_ibox(host, auth)
         target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
         self.iscsiapi.login_all(target, auth)
-        self._assert_number_of_action_sessions(target, len(target.get_endpoints()))
+        self._assert_number_of_active_sessions(target, len(target.get_endpoints()), ibox_version)
 
         try:
             yield target
         finally:
             self.iscsiapi.logout_all(target)
-            self._assert_number_of_action_sessions(target, 0)
+            self._assert_number_of_active_sessions(target, 0, ibox_version)
             self.iscsiapi.undiscover(target)
 
-    def _assert_discovery_login_logout(self, net_space, host, auth):
-        with self._iscsi_connection_context(net_space, host, auth) as target:
+    def _assert_discovery_login_logout(self, net_space, host, auth, ibox_version=3):
+        with self._iscsi_connection_context(net_space, host, auth, ibox_version) as target:
             pass
 
-    def _assert_discovery_dual_login(self, net_space, host, auth):
-        with self._iscsi_connection_context(net_space, host, auth) as target:
+    def _assert_discovery_dual_login(self, net_space, host, auth, ibox_version=3):
+        with self._iscsi_connection_context(net_space, host, auth, ibox_version) as target:
             self.iscsiapi.login_all(target, auth)
 
-    def _assert_discovery_login_logout_consistent(self, net_space, host, auth):
-        with self._iscsi_connection_context(net_space, host, auth) as target:
-            self._service_stop_check_start_check(target)
+    def _assert_discovery_login_logout_consistent(self, net_space, host, auth, ibox_version):
+        with self._iscsi_connection_context(net_space, host, auth, ibox_version) as target:
+            self._service_stop_check_start_check(target, ibox_version)
 
-    def _assert_login_to_two_systems(self, net_space, host, auth1, auth2):
+    def _assert_login_to_two_systems(self, net_space, host, auth1, auth2, ibox_version):
         with self.another_system_context() as system:
             sdk = system.get_infinisdk()
+            another_ibox_version = self._get_infinibox_major_version(sdk)
             another_net_space = self._get_system_net_space(sdk)
             another_host = self._create_host("another_host", sdk)
-            with self._iscsi_connection_context(net_space, host, auth1) as target1:
-                with self._iscsi_connection_context(another_net_space, another_host, auth2) as target2:
+            with self._iscsi_connection_context(net_space, host, auth1, ibox_version) as target1:
+                with self._iscsi_connection_context(another_net_space, another_host, auth2, another_ibox_version) as target2:
                     pass
 
-    def _assert_login_to_two_systems_consistent(self, net_space, host, auth1, auth2):
+    def _assert_login_to_two_systems_consistent(self, net_space, host, auth1, auth2, ibox_version):
         with self.another_system_context() as system:
             sdk = system.get_infinisdk()
+            another_ibox_version = self._get_infinibox_major_version(sdk)
             another_net_space = setup_iscsi_on_infinibox(sdk)
             another_host = self._create_host("another_host", sdk)
-            with self._iscsi_connection_context(net_space, host, auth1) as target1:
-                with self._iscsi_connection_context(another_net_space, another_host, auth2) as target2:
-                    self._service_stop_check_start_check(target1)
-                    self._service_stop_check_start_check(target2)
+            with self._iscsi_connection_context(net_space, host, auth1, ibox_version) as target1:
+                with self._iscsi_connection_context(another_net_space, another_host, auth2, another_ibox_version) as target2:
+                    self._service_stop_check_start_check(target1, ibox_version)
+                    self._service_stop_check_start_check(target2, another_ibox_version)
 
     def test_01_iscsi_software(self):
         iscsi_sw = infi.iscsiapi.get_iscsi_software_initiator()
@@ -218,7 +228,7 @@ class ISCSIapiHostTestCase(TestCase):
         if not get_platform_string().startswith('linux'):
             raise SkipTest("linux test skipping other platforms")
         old_iqn = self.iscsiapi.get_source_iqn()
-        self.iscsiapi.reset_source_iqn()  #  in linux every run generate a different IQN
+        self.iscsiapi.reset_source_iqn()  # in linux every run generate a different IQN
         self.assertNotEqual(old_iqn, self.iscsiapi.get_source_iqn())
 
     def test_022_iscsiapi_reset_source_iqn_windows(self):
@@ -247,62 +257,63 @@ class ISCSIapiHostTestCase(TestCase):
 
     def test_04_login(self):
         net_space = self._get_system_net_space(self.system_sdk)
-        ibox = self.system_sdk
+        ibox_version = self._get_infinibox_major_version(self.system_sdk)
         host = self._create_host(self.hostname)
         auth = iscsi_auth.NoAuth()
 
-        self._assert_discovery_login_logout(net_space, host, auth)
-        self._assert_discovery_login_logout(net_space, host, auth)
-        self._assert_login_to_two_systems(net_space, host, auth, auth)
-        self._assert_discovery_dual_login(net_space, host, auth)
+        self._assert_discovery_login_logout(net_space, host, auth, ibox_version)
+        self._assert_discovery_login_logout(net_space, host, auth, ibox_version)
+        self._assert_login_to_two_systems(net_space, host, auth, auth, ibox_version)
+        self._assert_discovery_dual_login(net_space, host, auth, ibox_version)
 
     def test_05_chap_login(self):
         if get_platform_string().startswith('solaris'):
             raise SkipTest("iSCSI CHAP on Solaris not supported - INFINIBOX-25831")
 
         net_space = self._get_system_net_space(self.system_sdk)
-        ibox = self.system_sdk
+        ibox_version = self._get_infinibox_major_version(self.system_sdk)
         host = self._create_host(self.hostname)
         auth1 = iscsi_auth.ChapAuth(INBOUND_USERNAME, INBOUND_SECRET)
         auth2 = iscsi_auth.ChapAuth(INBOUND_USERNAME2, INBOUND_SECRET2)
 
-        self._assert_discovery_login_logout(net_space, host, auth1)
-        self._assert_discovery_login_logout(net_space, host, auth1)
+        self._assert_discovery_login_logout(net_space, host, auth1, ibox_version)
+        self._assert_discovery_login_logout(net_space, host, auth1, ibox_version)
 
-        self._assert_login_to_two_systems(net_space, host, auth1, auth2)
-        self._assert_login_to_two_systems(net_space, host, iscsi_auth.NoAuth(), iscsi_auth.NoAuth())
+        self._assert_login_to_two_systems(net_space, host, auth1, auth2, ibox_version)
+        self._assert_login_to_two_systems(net_space, host, iscsi_auth.NoAuth(), iscsi_auth.NoAuth(), ibox_version)
 
     def test_06_mutual_chap_login(self):
         if get_platform_string().startswith('solaris'):
             raise SkipTest("iSCSI CHAP on Solaris not supported - INFINIBOX-25831")
 
         net_space = self._get_system_net_space(self.system_sdk)
-        ibox = self.system_sdk
+        ibox_version = self._get_infinibox_major_version(self.system_sdk)
         host = self._create_host(self.hostname)
 
-        self._assert_discovery_login_logout(net_space, host, self.auth1)
-        self._assert_discovery_login_logout(net_space, host, self.auth1)
+        self._assert_discovery_login_logout(net_space, host, self.auth1, ibox_version)
+        self._assert_discovery_login_logout(net_space, host, self.auth1, ibox_version)
         if get_platform_string().startswith('windows'):
-            self._assert_login_to_two_systems(net_space, host, self.auth1, self.auth1)
+            self._assert_login_to_two_systems(net_space, host, self.auth1, self.auth1, ibox_version)
         else:
-            self._assert_login_to_two_systems(net_space, host, self.auth1, self.auth2)
-        self._assert_login_to_two_systems(net_space, host, iscsi_auth.NoAuth(), iscsi_auth.NoAuth())
+            self._assert_login_to_two_systems(net_space, host, self.auth1, self.auth2, ibox_version)
+        self._assert_login_to_two_systems(net_space, host, iscsi_auth.NoAuth(), iscsi_auth.NoAuth(), ibox_version)
 
     def test_07_consistent_login(self):
         if get_platform_string().startswith('windows'):
             raise SkipTest("not available on this platform")
         net_space = self._get_system_net_space(self.system_sdk)
         host = self._create_host(self.hostname)
+        ibox_version = self._get_infinibox_major_version(self.system_sdk)
         no_auth = iscsi_auth.NoAuth()
         chap_auth1 = iscsi_auth.ChapAuth(INBOUND_USERNAME, INBOUND_SECRET)
         chap_auth2 = iscsi_auth.ChapAuth(INBOUND_USERNAME2, INBOUND_SECRET2)
-        self._assert_discovery_login_logout_consistent(net_space, host, no_auth)
-        self._assert_login_to_two_systems_consistent(net_space, host, no_auth, no_auth)
-        if not get_platform_string().startswith('solaris'):  #  INFINIBOX-25831
-            self._assert_discovery_login_logout_consistent(net_space, host, chap_auth1)
-            self._assert_discovery_login_logout_consistent(net_space, host, self.auth1)
-            self._assert_login_to_two_systems_consistent(net_space, host, chap_auth1, chap_auth2)
-            self._assert_login_to_two_systems_consistent(net_space, host, self.auth1, self.auth2)
+        self._assert_discovery_login_logout_consistent(net_space, host, no_auth, ibox_version)
+        self._assert_login_to_two_systems_consistent(net_space, host, no_auth, no_auth, ibox_version)
+        if not get_platform_string().startswith('solaris'):  # INFINIBOX-25831
+            self._assert_discovery_login_logout_consistent(net_space, host, chap_auth1, ibox_version)
+            self._assert_discovery_login_logout_consistent(net_space, host, self.auth1, ibox_version)
+            self._assert_login_to_two_systems_consistent(net_space, host, chap_auth1, chap_auth2, ibox_version)
+            self._assert_login_to_two_systems_consistent(net_space, host, self.auth1, self.auth2, ibox_version)
 
 import requests
 requests.packages.urllib3.disable_warnings()
