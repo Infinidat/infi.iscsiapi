@@ -104,7 +104,7 @@ class ISCSIapiHostTestCase(TestCase):
             host.update_security_chap_outbound_username(auth_type.get_outbound_username())
             host.update_security_chap_outbound_secret(auth_type.get_outbound_secret())
             host.update_security_method('MUTUAL_CHAP')
-        security_method = host.get_field(field_name="security_method", from_cache=False)
+        return host.get_security_method(from_cache=False)
 
     def _solaris_debug_dump(self):
         commands = [
@@ -153,7 +153,8 @@ class ISCSIapiHostTestCase(TestCase):
 
     @contextmanager
     def _iscsi_connection_context(self, net_space, host, auth, ibox_version=3):
-        self._change_auth_on_ibox(host, auth)
+        current_auth = self._change_auth_on_ibox(host, auth)
+        self.assertEqual(current_auth, auth.get_auth_name())
         target = self.iscsiapi.discover(net_space.get_field('ips')[0].ip_address)
         self.iscsiapi.login_all(target, auth)
         self._assert_number_of_active_sessions(target, len(target.get_endpoints()), ibox_version)
