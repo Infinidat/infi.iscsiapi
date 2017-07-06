@@ -85,24 +85,24 @@ class SolarisISCSIapi(base.ConnectionManager):
         process = self._execute_assert_n_log(cmd)
         output = process.get_stdout().splitlines()
         logger.debug([line.strip() for line in output])
+        source_ip_regex = re.compile('IP address \(Local\): 'r'(?P<src_ip>\d+\.\d+\.\d+\.\d+)\:(?P<src_port>\d+)')
+        target_ip_regex = re.compile('IP address \(Peer\): 'r'(?P<dst_ip>\d+\.\d+\.\d+\.\d+)\:(?P<dst_port>\d+)')
         for line_number, line in enumerate(output):
-            if re.search(r'Target: ', line):
+            if 'Target: ' in line:
                 iqn = line.split()[1]
                 _ = IQN(iqn)  # make sure iqn is valid
-                for ident_line in range(1, len(output)):
-                    if re.search(r'TPGT:', output[line_number + ident_line]):
-                        uid = output[line_number + ident_line].split()[1]
-                    source_ip_regex = re.compile('IP address \(Local\): 'r'(?P<src_ip>\d+\.\d+\.\d+\.\d+)\:(?P<src_port>\d+)')
-                    target_ip_regex = re.compile('IP address \(Peer\): 'r'(?P<dst_ip>\d+\.\d+\.\d+\.\d+)\:(?P<dst_port>\d+)')
-                    if source_ip_regex.search(output[line_number + ident_line]):
-                        session = source_ip_regex.search(output[line_number + ident_line]).groupdict()
-                    if target_ip_regex.search(output[line_number + ident_line]):
-                        session.update(target_ip_regex.search(output[line_number + ident_line]).groupdict())
+                for ident_line in range(line_number, len(output)):
+                    if 'TPGT: ' in output[ident_line]:
+                        uid = output[ident_line].split()[1]
+                    if source_ip_regex.search(output[ident_line]):
+                        session = source_ip_regex.search(output[ident_line]).groupdict()
+                    if target_ip_regex.search(output[ident_line]):
+                        session.update(target_ip_regex.search(output[ident_line]).groupdict())
                         session['iqn'] = iqn
                         session['uid'] = uid
                         availble_sessions.append(session)
                         break
-                    if re.search('Login Parameters', output[line_number + ident_line]):
+                    if re.search('Login Parameters', output[ident_line]):
                         # max search - no point searching after here
                         break
         return availble_sessions
