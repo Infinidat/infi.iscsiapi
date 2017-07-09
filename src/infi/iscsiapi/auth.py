@@ -3,7 +3,8 @@ class ISCSIAuth(object):
 
 
 class NoAuth(ISCSIAuth):
-    pass
+    def get_auth_name(self):
+        return "NONE"
 
 
 class ChapAuth(ISCSIAuth):
@@ -16,6 +17,9 @@ class ChapAuth(ISCSIAuth):
 
     def get_inbound_secret(self):
         return self._inbound_secret
+
+    def get_auth_name(self):
+        return "CHAP"
 
 
 class MutualChapAuth(ISCSIAuth):
@@ -36,3 +40,6 @@ class MutualChapAuth(ISCSIAuth):
 
     def get_outbound_secret(self):
         return self._outbound_secret
+
+    def get_auth_name(self):
+        return "MUTUAL_CHAP"
