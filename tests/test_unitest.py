@@ -132,13 +132,6 @@ class ISCSIapiHostTestCase(TestCase):
         return net_space
 
     def _assert_number_of_active_sessions(self, target, expected, ibox_version):
-        if get_platform_string().startswith('solaris'):
-            ''' in infinbox verison 4.0 there is a chance that TPGT will be per network space INFINIBOX-27965
-                This effects only solaris so for now we override expected connections in solaris to fit the new behavior
-            '''
-            self._solaris_debug_dump()
-            if ibox_version == 4 and expected != 0:
-                expected = 1
         actual = len(self.iscsiapi.get_sessions(target))
         message = 'We expected {0} connections to target {1} but found {2}'.format(expected, target.get_iqn(), actual)
         self.assertEqual(actual, expected, message)
