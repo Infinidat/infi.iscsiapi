@@ -51,7 +51,7 @@ class ISCSIapiHostTestCase(TestCase):
 
     @contextmanager
     def another_system_context(self):
-        system = self.system_factory.allocate_infinidat_system(labels=(['ci-ready', 'iscsi']))
+        system = self.system_factory.allocate_infinidat_system(labels=(['ci-ready', 'iscsi', 'infinibox-3.0']))
         system.purge()
         system.get_infinisdk().login()
         try:
