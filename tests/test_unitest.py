@@ -35,7 +35,7 @@ class ISCSIapiHostTestCase(TestCase):
                 system.purge()
 
         cls.skip_if_not_available()
-        cls.system = cls.system_factory.allocate_infinidat_system(labels=(['ci-ready', 'iscsi']),
+        cls.system = cls.system_factory.allocate_infinidat_system(labels=(['ci-ready', 'iscsi', 'infinibox-3.0']),
                                                                   purpose_string="iscsiapi Tests",
                                                                   timeout_in_seconds=3600)
         _purge_and_retry(cls.system)
@@ -51,7 +51,7 @@ class ISCSIapiHostTestCase(TestCase):
 
     @contextmanager
     def another_system_context(self):
-        system = self.system_factory.allocate_infinidat_system(labels=(['ci-ready', 'iscsi']))
+        system = self.system_factory.allocate_infinidat_system(labels=(['ci-ready', 'iscsi', 'infinibox-3.0']))
         system.purge()
         system.get_infinisdk().login()
         try:
@@ -132,13 +132,6 @@ class ISCSIapiHostTestCase(TestCase):
         return net_space
 
     def _assert_number_of_active_sessions(self, target, expected, ibox_version):
-        if get_platform_string().startswith('solaris'):
-            ''' in infinbox verison 4.0 there is a chance that TPGT will be per network space INFINIBOX-27965
-                This effects only solaris so for now we override expected connections in solaris to fit the new behavior
-            '''
-            self._solaris_debug_dump()
-            if ibox_version == 4 and expected != 0:
-                expected = 1
         actual = len(self.iscsiapi.get_sessions(target))
         message = 'We expected {0} connections to target {1} but found {2}'.format(expected, target.get_iqn(), actual)
         self.assertEqual(actual, expected, message)

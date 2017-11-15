@@ -295,15 +295,18 @@ class WindowsISCSIapi(base.ConnectionManager):
                         endpoints.append(endpoint)
 
             # u'SendTargets:*test 0003260 ROOT\\ISCSIPRT\\0000_0 '
+            # HOSTDEV-2764: u'SendTargets:*172.16.130.9 0003260 ROOT\\ISCSIPRT\\0000_0 172.16.130.55'
             discovery_mechanism = query.Properties_.Item('DiscoveryMechanism').Value
             if not discovery_mechanism:
+                logger.debug("invalid discovery mechanism (empty): {!r}".format(discovery_mechanism))
+                continue
+            discovery_mechanism = discovery_mechanism.strip().split()
+            if len(discovery_mechanism) < 2:
                 logger.debug("invalid discovery mechanism: {!r}".format(discovery_mechanism))
                 continue
-            if discovery_mechanism.strip().count(' ') != 2:
-                logger.debug("invalid discovery mechanism: {!r}".format(discovery_mechanism))
-                continue
-            discovery_endpoint_ip, discovery_endpoint_port, _ = discovery_mechanism.strip().split()
-            discovery_endpoint = base.Endpoint(discovery_endpoint_ip.split(':')[-1], int(str(discovery_endpoint_port), base=10))
+            discovery_endpoint_ip = discovery_mechanism[0].split(':')[-1].strip("*")
+            discovery_endpoint_port = int(discovery_mechanism[1])
+            discovery_endpoint = base.Endpoint(discovery_endpoint_ip, discovery_endpoint_port)
             target = base.Target(endpoints, discovery_endpoint, iqn)
             if target not in discovered_targets:
                 discovered_targets.append(target)
