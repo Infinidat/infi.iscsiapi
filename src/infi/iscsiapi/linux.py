@@ -78,11 +78,11 @@ class LinuxISCSIapi(base.ConnectionManager):
                 for connection in connections:
                     try:
                         with open(os.path.join(connection, 'address'), 'r') as fd:
-                            ip_address = fd.read().strip()
+                            ip_address = fd.read().rstrip(' \t\r\n\0')
                         with open(os.path.join(connection, 'port'), 'r') as fd:
-                            port = fd.read().strip()
+                            port = fd.read().rstrip(' \t\r\n\0')
                         with open(os.path.join(connection, 'persistent_address'), 'r') as fd:
-                            source_ip = fd.read().strip()
+                            source_ip = fd.read().rstrip(' \t\r\n\0')
                         break
                     except (IOError, OSError):
                         logger.debug("connection parameters are missing for {}".format(connection))
