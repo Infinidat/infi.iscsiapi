@@ -31,7 +31,7 @@ class LinuxISCSIapi(base.ConnectionManager):
         '''get an iqn of discovered target and return the discovery ip address
         '''
         import re
-        _ = IQN(iqn)  # make sure it's valid iqn
+        IQN(iqn)  # make sure it's valid iqn
         for end_point in os.listdir(os.path.join(ISCSI_CONNECTION_CONFIG, iqn)):
             filepath = os.path.join(ISCSI_CONNECTION_CONFIG, iqn, end_point)
             # HPT-2193 filepath could be a file with the node info, or a dir that contains a file "default" which
@@ -212,9 +212,9 @@ class LinuxISCSIapi(base.ConnectionManager):
 
     def reset_source_iqn(self):
         '''use in case iqn is invalid and regeneration of it is required'''
-        process =  self._execute_assert_success([GENERATE_COMMAND])
+        process = self._execute_assert_success([GENERATE_COMMAND])
         iqn = process.get_stdout().strip()
-        _ = IQN(iqn) #  validating new IQN
+        IQN(iqn)  # validating new IQN
         logger.info("Regeneration of iqn was initiated, old file {}".format(ISCSI_INITIATOR_IQN_FILE) +
                     "had this data in it {!r}, new iqn is:{}".format(self._get_old_iqn(), iqn))
         self.set_source_iqn(iqn)
@@ -223,9 +223,7 @@ class LinuxISCSIapi(base.ConnectionManager):
         '''receives a string, validates it's an iqn then set it to the host
         NOTE: this restart the iscsi service and may fail active sessions !
         '''
-        import shutil
-        from os.path import isfile
-        _ = IQN(iqn)   # checks iqn is valid
+        IQN(iqn)   # checks iqn is valid
         logger.info("Old IQN was:{}".format(self._get_old_iqn()))
         replacement_strig = 'InitiatorName=' + iqn
         with open(ISCSI_INITIATOR_IQN_FILE, 'w') as fd:
@@ -236,7 +234,6 @@ class LinuxISCSIapi(base.ConnectionManager):
     def discover(self, ip_address, port=3260):
         '''initiate discovery and returns a list of dicts which contain all available targets
         '''
-        endpoints = []
         args = ['iscsiadm', '-m', 'discovery', '-t', 'st', '-p', str(ip_address) + ':' + str(port)]
         logger.info("running {}".format(args))
         self._execute_assert_success(args)

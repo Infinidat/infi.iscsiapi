@@ -67,7 +67,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         # TODO: support multiple discovery addresses
         import re
         discovery_addresses = []
-        _ = IQN(iqn)  # make sure it's valid iqn
+        IQN(iqn)  # make sure it's valid iqn
         cmd = ['iscsiadm', 'list', 'discovery-address']
         process = self._execute_assert_n_log(cmd)
         regex = re.compile('Discovery Address: 'r'(?P<ip>\d+\.\d+\.\d+\.\d+)\:(?P<port>\d+)')
@@ -90,7 +90,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         for line_number, line in enumerate(output):
             if 'Target: ' in line:
                 iqn = line.split()[1]
-                _ = IQN(iqn)  # make sure iqn is valid
+                IQN(iqn)  # make sure iqn is valid
                 for ident_line in range(line_number, len(output)):
                     if 'TPGT: ' in output[ident_line]:
                         uid = output[ident_line].split()[1]
@@ -145,7 +145,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         NOTE: this restart the iscsi service and may fail active sessions !
         in Solaris, this doesn't save a copy of the old IQN
         '''
-        _ = IQN(iqn)   # checks iqn is valid
+        IQN(iqn)   # checks iqn is valid
         old_iqn = self.get_source_iqn()  # check file exist and valid
         execute_assert_success(['iscsiadm', 'modify', 'initiator-node', '-N', iqn])
         logger.info("iqn was replaced from {} to {}".format(old_iqn, iqn))
