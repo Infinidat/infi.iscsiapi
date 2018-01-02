@@ -3,6 +3,7 @@ from . import auth as iscsiapi_auth
 from infi.dtypes.iqn import IQN
 from infi.os_info import get_platform_string
 import infi.pkgmgr
+import os
 
 from logging import getLogger
 logger = getLogger(__name__)
@@ -26,75 +27,86 @@ class LinuxISCSIapi(base.ConnectionManager):
         logger.debug("Running: {}".format(cmd))
         return execute_assert_success(cmd)
 
-    def _parse_connection_config(self):
-        import os
-        import re
-        availble_targets = []
-        if not os.path.exists(ISCSI_CONNECTION_CONFIG):
-            return availble_targets
-        if not os.path.isdir(ISCSI_CONNECTION_CONFIG):
-            return availble_targets
-        for target in os.listdir(ISCSI_CONNECTION_CONFIG):
-            iqn = target
-            for end_point in os.listdir(ISCSI_CONNECTION_CONFIG + '/' + target):
-                regex = re.compile(r'(?P<dst_ip>\d+\.\d+\.\d+\.\d+)\,(?P<dst_port>\d+)')
-                session = regex.match(end_point).groupdict()
-                session['iqn'] = iqn
-                availble_targets.append(session)
-        return availble_targets
-
-    def _parse_discovery_address(self, iqn):
+    def _parse_discovery_endpoint(self, iqn):
         '''get an iqn of discovered target and return the discovery ip address
         '''
-        import os
         import re
-        import glob
-        regex = re.compile('node.discovery_address = 'r'(?P<ip>\d+\.\d+\.\d+\.\d+)')
         _ = IQN(iqn)  # make sure it's valid iqn
-        for filepath in glob.glob(os.path.join(ISCSI_CONNECTION_CONFIG, iqn, '*', # target address
-                                               'default')):
+        for end_point in os.listdir(os.path.join(ISCSI_CONNECTION_CONFIG, iqn)):
+            filepath = os.path.join(ISCSI_CONNECTION_CONFIG, iqn, end_point)
+            # HPT-2193 filepath could be a file with the node info, or a dir that contains a file "default" which
+            # has the information
+            if os.path.isdir(filepath):
+                filepath = os.path.join(filepath, 'default')
+            if not os.path.isfile(filepath):
+                continue
             try:
                 with open(filepath, 'r') as fd:
-                    for line in fd:
-                        if re.match(regex, line.strip()):
-                            return regex.search(line.strip()).groupdict()['ip']
+                    content = fd.read()
             except (OSError, IOError):
                 continue
+            ip = re.search("node.discovery_address\s*=\s*(\d+\.\d+\.\d+\.\d+)", content)
+            port = re.search("node.discovery_port\s*=\s*(\d+)", content)
+            if ip is not None and port is not None:
+                return base.Endpoint(ip.group(1), int(port.group(1)))
+
+    def get_discovered_targets(self):
+        targets = []
+        if not os.path.isdir(ISCSI_CONNECTION_CONFIG):
+            return targets
+        for iqn in os.listdir(ISCSI_CONNECTION_CONFIG):
+            endpoints = []
+            for end_point in os.listdir(os.path.join(ISCSI_CONNECTION_CONFIG, iqn)):
+                dst_ip, dst_port = end_point.split(",")[:2]
+                endpoints.append(base.Endpoint(dst_ip, int(dst_port)))
+            discovery_endpoint = self._parse_discovery_endpoint(iqn)
+            # HPT-2193 discovery_endpoint could be None, we must not fail because of this
+            targets.append(base.Target(endpoints, discovery_endpoint, iqn))
+        return targets
 
     def _iter_sessions_in_sysfs(self):
-        import os
         import re
         from infi.dtypes.hctl import HCT
         from glob import glob
 
+        def sysfs_file_content(path):
+            with open(path, 'r') as fd:
+                return fd.read().rstrip(' \t\r\n\0')
+
         for host in glob(os.path.join('/sys', 'devices', 'platform', 'host*')):
+
+            # some older versions of RHEL-based operating systems use the former path variant, others use the latter
+            iscsi_host = glob(os.path.join(host, 'iscsi_host*host*')) + \
+                         glob(os.path.join(host, 'iscsi_host', 'host*'))
+            source_ip = sysfs_file_content(os.path.join(iscsi_host[0], 'ipaddress'))
+
             for session in glob(os.path.join(host, 'session*')):  # usually, one session per host
                 uid = re.split('^session', os.path.basename(session))[1]
 
-                # some older versions of RHEL-based operating systems use the former path, others use the latter
+                iscsi_session = glob(os.path.join(session, 'iscsi_session*session*')) + \
+                                glob(os.path.join(session, 'iscsi_session', 'session*'))
+                source_iqn = sysfs_file_content(os.path.join(iscsi_session[0], 'initiatorname'))
+                target_iqn = sysfs_file_content(os.path.join(iscsi_session[0], 'targetname'))
+
                 connections = glob(os.path.join(session, 'connection*', 'iscsi_connection*connection*')) + \
                               glob(os.path.join(session, 'connection*', 'iscsi_connection', 'connection*'))
 
                 for connection in connections:
                     try:
-                        with open(os.path.join(connection, 'address'), 'r') as fd:
-                            ip_address = fd.read().rstrip(' \t\r\n\0')
-                        with open(os.path.join(connection, 'port'), 'r') as fd:
-                            port = fd.read().rstrip(' \t\r\n\0')
-                        with open(os.path.join(connection, 'persistent_address'), 'r') as fd:
-                            source_ip = fd.read().rstrip(' \t\r\n\0')
+                        ip_address = sysfs_file_content(os.path.join(connection, 'address'))
+                        port = sysfs_file_content(os.path.join(connection, 'port'))
                         break
                     except (IOError, OSError):
                         logger.debug("connection parameters are missing for {}".format(connection))
                         continue
                 else:  # no connections in session
                     logger.debug("no valid connection for session {}".format(session))
-
                     continue
+
+                target_endpoint = base.Endpoint(ip_address, int(port))
 
                 for target in glob(os.path.join(session, 'target*')):  # usually, one target per session
                     target_id = os.path.basename(target)
-                    endpoint = base.Endpoint(ip_address, port)
                     hct_tuple = re.split('^target', target_id)[1].split(':')
                     hct = HCT(*(int(i) for i in hct_tuple))
                     break
@@ -102,25 +114,27 @@ class LinuxISCSIapi(base.ConnectionManager):
                     logger.debug("no targets for session {}".format(session))
                     continue
 
-                yield uid, ip_address, port, source_ip, endpoint, hct
+                yield target_iqn, target_endpoint, source_ip, source_iqn, uid, hct
 
-    def _get_sessions_using_sysfs(self):
+    def _get_sessions_from_sysfs(self):
         sessions = []
-        discovered_targets = self.get_discovered_targets()
-        source_iqn = self.get_source_iqn()
+        iqn_to_target = {target.get_iqn(): target for target in self.get_discovered_targets()}
 
-        for uid, ip_address, port, source_ip, endpoint, hct in self._iter_sessions_in_sysfs():
-            for target in discovered_targets:
-                if endpoint in target.get_endpoints():
-                    session = base.Session(target, endpoint, source_ip, source_iqn, uid, hct)
-                    sessions.append(session)
-                    break
-                else:  # no targets to match for
-                    continue
+        for target_iqn, target_endpoint, source_ip, source_iqn, uid, hct in self._iter_sessions_in_sysfs():
+            if target_iqn not in iqn_to_target:
+                # no matching targets
+                # TODO should we raise an exception here? Or pass target=None to base.Session?
+                # We saw in HPT-2193 that skipping sessions may be a big problem because it means we may miss iSCSI
+                # devices and later treat them as local devices instead
+                msg = "no valid target for session in sysfs. target endpoint={}:{} target iqn={}"
+                logger.debug(msg.format(target_endpoint.get_ip_address(), target_endpoint.get_port(), target_iqn))
+                continue
+            target = iqn_to_target[target_iqn]
+            session = base.Session(target, target_endpoint, source_ip, source_iqn, uid, hct)
+            sessions.append(session)
         return sessions
 
     def _reload_iscsid_service(self):
-        import os.path
         if os.path.isfile('/bin/systemctl'):
             self._execute_assert_success(['systemctl', 'restart', 'iscsid'])
         elif os.path.isfile('/etc/init.d/iscsid'):
@@ -182,24 +196,6 @@ class LinuxISCSIapi(base.ConnectionManager):
             if target_endpoint == session.get_target_endpoint():
                 return session
 
-    def get_discovered_targets(self):
-        iqn_list = []
-        targets = []
-        for connectivity in self._parse_connection_config():
-            iqn_list.append(connectivity['iqn'])
-        uniq_iqn = list(set(iqn_list))
-        for iqn in uniq_iqn:
-            endpoints = []
-            discovery_address = self._parse_discovery_address(iqn)
-            if discovery_address is None:  # possible race
-                continue
-            discovery_endpoint = base.Endpoint(discovery_address, 3260)  # TODO parse port
-            for connectivity in self._parse_connection_config():
-                if connectivity['iqn'] == iqn:
-                    endpoints.append(base.Endpoint(connectivity['dst_ip'], connectivity['dst_port']))
-            targets.append(base.Target(endpoints, discovery_endpoint, iqn))
-        return targets
-
     def get_source_iqn(self):
         '''return infi.dtypes.iqn type iqn if iscsi initiator file exists
         '''
@@ -244,13 +240,10 @@ class LinuxISCSIapi(base.ConnectionManager):
         args = ['iscsiadm', '-m', 'discovery', '-t', 'st', '-p', str(ip_address) + ':' + str(port)]
         logger.info("running {}".format(args))
         self._execute_assert_success(args)
-        for target_connectivity in self._parse_connection_config():
-            if target_connectivity['dst_ip'] == ip_address:
-                iqn = target_connectivity['iqn']
-        for target_connectivity in self._parse_connection_config():
-            if iqn == target_connectivity['iqn']:
-                endpoints.append(base.Endpoint(target_connectivity['dst_ip'], target_connectivity['dst_port']))
-        return base.Target(endpoints, base.Endpoint(ip_address, port), iqn)
+
+        discovery_endpoint = base.Endpoint(ip_address, port)
+        targets = self.get_discovered_targets()
+        return [target for target in targets if discovery_endpoint in target.get_endpoints()][0]
 
     def login(self, target, endpoint, auth=None, num_of_connections=1):
         if auth is None:
@@ -258,9 +251,9 @@ class LinuxISCSIapi(base.ConnectionManager):
         self._set_auth(auth, target)
         if self._session_already_active(target, endpoint) is None:
             args = ['iscsiadm', '-m', 'node', '-l', '-T', target.get_iqn(), '-p',
-            endpoint.get_ip_address() + ':' + endpoint.get_port()]
+            "{}:{}".format(endpoint.get_ip_address(), endpoint.get_port())]
             self._execute_assert_success(args)
-        for session in self._get_sessions_using_sysfs():
+        for session in self._get_sessions_from_sysfs():
             if session.get_target_endpoint() == endpoint:
                 return session
 
@@ -279,14 +272,10 @@ class LinuxISCSIapi(base.ConnectionManager):
     def get_sessions(self, target=None):
         '''receive a target or None and return a list of all available sessions
         '''
-        if target:
-            target_sessions = []
-            for session in self._get_sessions_using_sysfs():
-                if session.get_target_endpoint() in target.get_endpoints():
-                    target_sessions.append(session)
-            return target_sessions
-        else:
-            return self._get_sessions_using_sysfs()
+        sessions = self._get_sessions_from_sysfs()
+        if not target:
+            return sessions
+        return [session for session in sessions if session.get_target_endpoint() in target.get_endpoints()]
 
     def rescan(self):
         '''rescan all available sessions
