@@ -6,7 +6,6 @@ from infi.dtypes.iqn import IQN
 from infi.wmi import WmiClient
 
 from logging import getLogger
-from time import sleep
 logger = getLogger(__name__)
 
 ISCSI_LOGIN_FLAG_MULTIPATH_DISABLED = 0
@@ -254,7 +253,7 @@ class WindowsISCSIapi(base.ConnectionManager):
         returns iqn type of the new IQN or None if fails
         '''
         logger.info("iqn before the change is {!r} going to change to {!r}".format(self.get_source_iqn(), iqn))
-        _ = IQN(iqn)  # raise if iqn doesn't exist
+        IQN(iqn)  # raise if iqn doesn't exist
         client = WmiClient('root\\wmi')
         query = list(client.execute_query("SELECT * FROM MSIscsiInitiator_MethodClass"))[0]
         initiator_name = query.Methods_.Item("SetIscsiInitiatorNodeName")
