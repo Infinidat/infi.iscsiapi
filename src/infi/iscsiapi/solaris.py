@@ -1,3 +1,8 @@
+from __future__ import unicode_literals
+
+
+import six
+
 from infi.execute import execute_assert_success, execute
 from . import auth as iscsiapi_auth
 from . import base
@@ -10,14 +15,14 @@ logger = getLogger(__name__)
 class SolarisISCSIapi(base.ConnectionManager):
     def _execute_assert_n_log(self, cmd, log_prefix='running: ', log_level='debug'):
         try:
-            getattr(logger, str(log_level))(log_prefix + "{}".format(cmd if isinstance(cmd, basestring) else ' '.join(cmd)))
+            getattr(logger, str(log_level))(log_prefix + "{}".format(cmd if isinstance(cmd, str) else ' '.join(cmd)))
         except AttributeError as e:
             logger.error("logger.{} doesn't exist, {!r}".format(log_level, e))
         return execute_assert_success(cmd)
 
     def _execute_n_log(self, cmd, log_prefix='running: ', log_level='debug'):
         try:
-            getattr(logger, str(log_level))(log_prefix + (cmd if isinstance(cmd, basestring) else ' '.join(cmd)))
+            getattr(logger, str(log_level))(log_prefix + (cmd if isinstance(cmd, str) else ' '.join(cmd)))
         except AttributeError as e:
             logger.error("logger.{} doesn't exist, {!r}".format(log_level, e))
         return execute(cmd)
@@ -83,7 +88,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         availble_sessions = []
         cmd = ['iscsiadm', 'list', 'target', '-v']
         process = self._execute_assert_n_log(cmd)
-        output = process.get_stdout().splitlines()
+        output = process.get_stdout().decode('utf-8').splitlines()
         logger.debug([line.strip() for line in output])
         source_ip_regex = re.compile('IP address \(Local\): 'r'(?P<src_ip>\d+\.\d+\.\d+\.\d+)\:(?P<src_port>\d+)')
         target_ip_regex = re.compile('IP address \(Peer\): 'r'(?P<dst_ip>\d+\.\d+\.\d+\.\d+)\:(?P<dst_port>\d+)')
@@ -130,12 +135,13 @@ class SolarisISCSIapi(base.ConnectionManager):
         '''
         import re
         process = self._execute_assert_n_log(['iscsiadm', 'list', 'initiator-node'])
-        iqn_line = process.get_stdout().splitlines()[0]
+        process_stdout = process.get_stdout().decode('utf-8')
+        iqn_line = process_stdout.splitlines()[0]
         if re.search(r'Initiator node name', iqn_line):
             iqn = iqn_line.split('Initiator node name: ')[1]
             return IQN(iqn)  # Validate iqn is legal
         else:
-            raise RuntimeError("Couldn't find IQN from iscsiadm output, got {!r}".format(process.get_stdout()))
+            raise RuntimeError("Couldn't find IQN from iscsiadm output, got {!r}".format(process_stdout))
 
     def reset_source_iqn(self):
         pass
