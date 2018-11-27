@@ -31,7 +31,7 @@ class LinuxISCSIapi(base.ConnectionManager):
         '''get an iqn of discovered target and return the discovery ip address
         '''
         import re
-        IQN(iqn)  # make sure it's valid iqn
+        IQN(iqn)  # make sure it's a valid iqn
         for end_point in os.listdir(os.path.join(ISCSI_CONNECTION_CONFIG, iqn)):
             filepath = os.path.join(ISCSI_CONNECTION_CONFIG, iqn, end_point)
             # HPT-2193 filepath could be a file with the node info, or a dir that contains a file "default" which
@@ -213,7 +213,7 @@ class LinuxISCSIapi(base.ConnectionManager):
     def reset_source_iqn(self):
         '''use in case iqn is invalid and regeneration of it is required'''
         process = self._execute_assert_success([GENERATE_COMMAND])
-        iqn = process.get_stdout().strip()
+        iqn = process.get_stdout().decode().strip()
         IQN(iqn)  # validating new IQN
         logger.info("Regeneration of iqn was initiated, old file {}".format(ISCSI_INITIATOR_IQN_FILE) +
                     "had this data in it {!r}, new iqn is:{}".format(self._get_old_iqn(), iqn))
