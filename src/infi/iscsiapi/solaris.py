@@ -56,7 +56,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         process = self._execute_n_log(cmd)
         if process.get_returncode() != 0:
             return availble_targets
-        output = process.get_stdout().splitlines()
+        output = process.get_stdout().decode().splitlines()
         for line_number, line in enumerate(output):
             if re.search(r'Target name:', line):
                 if re.search(r'Target address:', output[line_number + 1]):
@@ -76,7 +76,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         cmd = ['iscsiadm', 'list', 'discovery-address']
         process = self._execute_assert_n_log(cmd)
         regex = re.compile('Discovery Address: 'r'(?P<ip>\d+\.\d+\.\d+\.\d+)\:(?P<port>\d+)')
-        for line in process.get_stdout().splitlines():
+        for line in process.get_stdout().decode().splitlines():
             discovery_addresses.append(regex.search(line).groupdict()['ip'])
         for path in self._parse_discovered_targets():
             if path['iqn'] == iqn:
@@ -88,7 +88,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         availble_sessions = []
         cmd = ['iscsiadm', 'list', 'target', '-v']
         process = self._execute_assert_n_log(cmd)
-        output = process.get_stdout().decode('utf-8').splitlines()
+        output = process.get_stdout().decode().splitlines()
         logger.debug([line.strip() for line in output])
         source_ip_regex = re.compile('IP address \(Local\): 'r'(?P<src_ip>\d+\.\d+\.\d+\.\d+)\:(?P<src_port>\d+)')
         target_ip_regex = re.compile('IP address \(Peer\): 'r'(?P<dst_ip>\d+\.\d+\.\d+\.\d+)\:(?P<dst_port>\d+)')
@@ -135,7 +135,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         '''
         import re
         process = self._execute_assert_n_log(['iscsiadm', 'list', 'initiator-node'])
-        process_stdout = process.get_stdout().decode('utf-8')
+        process_stdout = process.get_stdout().decode()
         iqn_line = process_stdout.splitlines()[0]
         if re.search(r'Initiator node name', iqn_line):
             iqn = iqn_line.split('Initiator node name: ')[1]
@@ -176,7 +176,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         cmd = ['iscsiadm', 'modify', 'initiator-node', '--authentication', 'none']
         self._execute_assert_n_log(cmd)
 
-        for line in self._execute_assert_n_log(['iscsiadm', 'list', 'target-param']).get_stdout().splitlines():
+        for line in self._execute_assert_n_log(['iscsiadm', 'list', 'target-param']).get_stdout().decode().splitlines():
             if not line.startswith('Target'):
                 return
             iqn = line.strip().split()[1]
@@ -251,7 +251,7 @@ class SolarisISCSIapi(base.ConnectionManager):
             cmd = ['iscsiadm', 'list', 'discovery-address']
             process = self._execute_assert_n_log(cmd)
             regex = re.compile('Discovery Address: 'r'(?P<ip>\d+\.\d+\.\d+\.\d+)\:(?P<port>\d+)')
-            for line in process.get_stdout().splitlines():
+            for line in process.get_stdout().decode().splitlines():
                 self._execute_n_log(['iscsiadm', 'remove', 'discovery-address', regex.search(line).groupdict()['ip']])
 
     def login(self, target, endpoint, auth=None, num_of_connections=1):
