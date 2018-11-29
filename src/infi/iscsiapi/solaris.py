@@ -12,17 +12,20 @@ from infi.os_info import get_platform_string
 from logging import getLogger
 logger = getLogger(__name__)
 
+
 class SolarisISCSIapi(base.ConnectionManager):
     def _execute_assert_n_log(self, cmd, log_prefix='running: ', log_level='debug'):
         try:
-            getattr(logger, str(log_level))(log_prefix + "{}".format(cmd if isinstance(cmd, str) else ' '.join(cmd)))
+            getattr(logger, str(log_level))(log_prefix + "{}".format(
+                cmd if isinstance(cmd, six.string_types) else ' '.join(cmd)))
         except AttributeError as e:
             logger.error("logger.{} doesn't exist, {!r}".format(log_level, e))
         return execute_assert_success(cmd)
 
     def _execute_n_log(self, cmd, log_prefix='running: ', log_level='debug'):
         try:
-            getattr(logger, str(log_level))(log_prefix + (cmd if isinstance(cmd, str) else ' '.join(cmd)))
+            getattr(logger, str(log_level))(
+                log_prefix + (cmd if isinstance(cmd, six.string_types) else ' '.join(cmd)))
         except AttributeError as e:
             logger.error("logger.{} doesn't exist, {!r}".format(log_level, e))
         return execute(cmd)
@@ -305,6 +308,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         '''
         logger.info("Someone just initiated iscsi rescan, In Solaris it does nothing")
         pass
+
 
 class SolarisSoftwareInitiator(base.SoftwareInitiator):
     def is_installed(self):
