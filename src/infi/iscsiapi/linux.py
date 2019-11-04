@@ -78,7 +78,11 @@ class LinuxISCSIapi(base.ConnectionManager):
             # some older versions of RHEL-based operating systems use the former path variant, others use the latter
             iscsi_host = glob(os.path.join(host, 'iscsi_host*host*')) + \
                          glob(os.path.join(host, 'iscsi_host', 'host*'))
-            source_ip = sysfs_file_content(os.path.join(iscsi_host[0], 'ipaddress'))
+            try:
+                source_ip = sysfs_file_content(os.path.join(iscsi_host[0], 'ipaddress'))
+            except (IOError, OSError):
+                logger.debug("Couldn't access initiator data for {}".format(iscsi_host[0]))
+                continue
 
             for session in glob(os.path.join(host, 'session*')):  # usually, one session per host
                 uid = re.split('^session', os.path.basename(session))[1]
