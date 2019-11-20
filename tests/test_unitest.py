@@ -35,7 +35,7 @@ class ISCSIapiHostTestCase(TestCase):
                 system.purge()
 
         cls.skip_if_not_available()
-        cls.system = cls.system_factory.allocate_infinidat_system(labels=(['ci-ready', 'iscsi', 'infinibox-3.0']),
+        cls.system = cls.system_factory.allocate_infinidat_system(labels=(['ci-ready']),
                                                                   purpose_string="iscsiapi Tests",
                                                                   timeout_in_seconds=3600)
         _purge_and_retry(cls.system)
@@ -51,7 +51,7 @@ class ISCSIapiHostTestCase(TestCase):
 
     @contextmanager
     def another_system_context(self):
-        system = self.system_factory.allocate_infinidat_system(labels=(['ci-ready', 'iscsi', 'infinibox-3.0']))
+        system = self.system_factory.allocate_infinidat_system(labels=(['ci-ready']))
         system.purge()
         system.get_infinisdk().login()
         try:
