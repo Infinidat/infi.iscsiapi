@@ -315,8 +315,8 @@ class SolarisSoftwareInitiator(base.SoftwareInitiator):
         ''' Return True if iSCSI initiator sw is installed otherwise return False
         '''
         if 'solaris' in get_platform_string():
-            process1 = execute('pkginfo', 'SUNWiscsir')
-            process2 = execute('pkginfo', 'SUNWiscsiu')
+            process1 = execute('pkginfo', '-q', 'SUNWiscsir')
+            process2 = execute('pkginfo', '-q', 'SUNWiscsiu')
             if process1.get_returncode() == process2.get_returncode() == 0:
                 return True
             else:
