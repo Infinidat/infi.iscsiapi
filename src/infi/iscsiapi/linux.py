@@ -78,6 +78,11 @@ class LinuxISCSIapi(base.ConnectionManager):
             # some older versions of RHEL-based operating systems use the former path variant, others use the latter
             iscsi_host = glob(os.path.join(host, 'iscsi_host*host*')) + \
                          glob(os.path.join(host, 'iscsi_host', 'host*'))
+
+            if not iscsi_host:
+                # might be that we didn't find such dirs, no iSCSI here:
+                continue
+
             try:
                 source_ip = sysfs_file_content(os.path.join(iscsi_host[0], 'ipaddress'))
             except (IOError, OSError):
