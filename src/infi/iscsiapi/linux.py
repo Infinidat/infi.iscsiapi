@@ -78,7 +78,16 @@ class LinuxISCSIapi(base.ConnectionManager):
             # some older versions of RHEL-based operating systems use the former path variant, others use the latter
             iscsi_host = glob(os.path.join(host, 'iscsi_host*host*')) + \
                          glob(os.path.join(host, 'iscsi_host', 'host*'))
-            source_ip = sysfs_file_content(os.path.join(iscsi_host[0], 'ipaddress'))
+
+            if not iscsi_host:
+                # might be that we didn't find such dirs, no iSCSI here:
+                continue
+
+            try:
+                source_ip = sysfs_file_content(os.path.join(iscsi_host[0], 'ipaddress'))
+            except (IOError, OSError):
+                logger.debug("Couldn't access initiator data for {}".format(iscsi_host[0]))
+                continue
 
             for session in glob(os.path.join(host, 'session*')):  # usually, one session per host
                 uid = re.split('^session', os.path.basename(session))[1]
@@ -296,27 +305,30 @@ class LinuxSoftwareInitiator(base.SoftwareInitiator):
     def is_installed(self):
         ''' In linux, return True if iSCSI initiator sw is installed otherwise return False
         '''
-        if 'centos' in get_platform_string() or 'redhat' in get_platform_string():
+        platform = get_platform_string()
+        if any(dist in platform for dist in ('redhat', 'centos', 'oracle')):
             pkgmgr = infi.pkgmgr.get_package_manager()
             return pkgmgr.is_package_installed('iscsi-initiator-utils')
-        if 'ubuntu' in get_platform_string() or 'suse' in get_platform_string():
+        if any(dist in platform for dist in ('ubuntu', 'suse')):
             pkgmgr = infi.pkgmgr.get_package_manager()
             return pkgmgr.is_package_installed('open-iscsi')
 
     def install(self):
-        if 'centos' in get_platform_string() or 'redhat' in get_platform_string():
+        platform = get_platform_string()
+        if any(dist in platform for dist in ('redhat', 'centos', 'oracle')):
             pkgmgr = infi.pkgmgr.get_package_manager()
             pkgmgr.install_package('iscsi-initiator-utils')
-        if 'ubuntu' in get_platform_string() or 'suse' in get_platform_string():
+        if any(dist in platform for dist in ('ubuntu', 'suse')):
             pkgmgr = infi.pkgmgr.get_package_manager()
             pkgmgr.install_package('open-iscsi')
-            if 'suse-12' in get_platform_string():
+            if 'suse-12' in platform:
                 self._execute(['service', 'iscsid', 'start'])
 
     def uninstall(self):
-        if 'centos' in get_platform_string() or 'redhat' in get_platform_string():
+        platform = get_platform_string()
+        if any(dist in platform for dist in ('redhat', 'centos', 'oracle')):
             pkgmgr = infi.pkgmgr.get_package_manager()
             pkgmgr.remove_package('iscsi-initiator-utils')
-        if 'ubuntu' in get_platform_string() or 'suse' in get_platform_string():
+        if any(dist in platform for dist in ('ubuntu', 'suse')):
             pkgmgr = infi.pkgmgr.get_package_manager()
             pkgmgr.remove_package('open-iscsi')
