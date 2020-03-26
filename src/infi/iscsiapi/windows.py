@@ -212,9 +212,9 @@ class WindowsISCSIapi(base.ConnectionManager):
         process = execute(args.split())
         if int(process.get_returncode()) != 0:
             logger.info("couldn't login to {!r} {!r} {!r} because: {!r}"
-                        .format(target.get_iqn(), endpoint.get_ip_address(), endpoint.get_port(), process.get_stdout()))
-            if "target has already been logged in" not in process.get_stdout():
-                raise RuntimeError(process.get_stdout())
+                        .format(target.get_iqn(), endpoint.get_ip_address(), endpoint.get_port(), process.get_stdout().decode()))
+            if "target has already been logged in" not in process.get_stdout().decode():
+                raise RuntimeError(process.get_stdout().decode())
 
     def login_all(self, target, auth=None):
         ''' login to all endpoint of a target and return the session it achieved
