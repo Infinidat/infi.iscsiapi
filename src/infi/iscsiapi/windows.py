@@ -5,6 +5,8 @@ from . import auth as iscsiapi_auth
 from infi.dtypes.iqn import IQN
 from infi.wmi import WmiClient
 
+import six
+
 from logging import getLogger
 logger = getLogger(__name__)
 
@@ -213,7 +215,7 @@ class WindowsISCSIapi(base.ConnectionManager):
         if int(process.get_returncode()) != 0:
             logger.info("couldn't login to {!r} {!r} {!r} because: {!r}"
                         .format(target.get_iqn(), endpoint.get_ip_address(), endpoint.get_port(), process.get_stdout()))
-            if "target has already been logged in" not in process.get_stdout():
+            if six.b("target has already been logged in") not in process.get_stdout():
                 raise RuntimeError(process.get_stdout())
 
     def login_all(self, target, auth=None):
