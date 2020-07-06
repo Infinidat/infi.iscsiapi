@@ -213,11 +213,17 @@ class LinuxISCSIapi(base.ConnectionManager):
         from os.path import isfile
         if not isfile(ISCSI_INITIATOR_IQN_FILE):
             raise NotReadyException("iSCSI initiator IQN file not found")
+        data = []
         with open(ISCSI_INITIATOR_IQN_FILE, 'r') as fd:
-            data = self._remove_comments(fd.readlines())
-            assert len(data) == 1, "something isn't right with {}".format(ISCSI_INITIATOR_IQN_FILE)
-            raw_iqn = re.split('InitiatorName=', data[0])
-            return IQN(raw_iqn[1].strip())
+            for line in fd:
+                # Ignore empty lines
+                content = line.strip()
+                if content:
+                    data.append(content)
+        data = self._remove_comments(data)
+        assert len(data) == 1, "something isn't right with {}".format(ISCSI_INITIATOR_IQN_FILE)
+        raw_iqn = re.split('InitiatorName=', data[0])
+        return IQN(raw_iqn[1].strip())
 
     def reset_source_iqn(self):
         '''use in case iqn is invalid and regeneration of it is required'''
