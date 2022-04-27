@@ -218,7 +218,7 @@ class LinuxISCSIapi(base.ConnectionManager):
                 raw_iqn = re.split('InitiatorName=', data[0])
                 return IQN(raw_iqn[1].strip())
         except Exception as e:
-            log.exception(e)
+            logger.error(e)
             raise NotReadyException("iSCSI initiator IQN file could not be open or might be empty")
 
     def reset_source_iqn(self):
