@@ -1,3 +1,8 @@
+import subprocess
+import platform
+from logging import getLogger
+logger = getLogger(__name__)
+
 class Session(object):
     '''class that contains the iscsi session information
     '''
@@ -101,10 +106,25 @@ class SoftwareInitiator(object):
         raise NotImplementedError()
 
 
+class ConnectionException(Exception):
+    pass
+
+
 class ConnectionManager(object):
     '''Class that contains the main iscsi methods for connecting iscsi initiator
     to an iscsi target
     '''
+
+    def check_icmp_connectivity(self, ip_address):
+        param = '-n' if platform.system().lower() == 'windows' else '-c'
+        command = ['ping', param, '1', ip_address]
+        ping = subprocess.run(command, stdout=subprocess.PIPE)
+        logger.debug("Checking icmp connectivity:\n" + ping.stdout)
+        if ping.returncode != 0:
+            raise ConnectionException("%s did not pass icmp connectivity check  " % (ip_address))
+        else:
+            return True
+
     def discover(self, ip_address, port=3260):
         '''perform an iscsi discovery to an ip address
         '''
