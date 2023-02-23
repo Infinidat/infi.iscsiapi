@@ -167,9 +167,7 @@ class ConnectionManager(object):
         import platform
         from infi.execute import execute_assert_success
         from logging import getLogger
-        logger = getLogger(__name__)
-        param = '-n' if platform.system().lower() == 'windows' else '-c'
-        cmd = ['ping', param, '1', ip_address]
-        result = execute_assert_success(cmd)
-        logger.debug("ICMP ping check connectivity result:\n" + result.get_stdout().decode())
-        result._check_return_code()
+        from pythonping import ping
+        logger = getLogger(__name__)        
+        result = ping(ip_adress, count=1)
+        logger.debug("ICMP ping check connectivity result:\n" + result)
