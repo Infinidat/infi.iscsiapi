@@ -164,10 +164,8 @@ class ConnectionManager(object):
         raise NotImplementedError()
 
     def icmp_connectivity_check(self, ip_address):
-        import platform
-        from infi.execute import execute_assert_success
         from logging import getLogger
         from pythonping import ping
         logger = getLogger(__name__)
-        result = ping(ip_adress, count=1)
+        result = ping(ip_address, count=1)
         logger.debug("ICMP ping check connectivity result:\n" + result)
