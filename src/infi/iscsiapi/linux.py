@@ -163,6 +163,15 @@ class LinuxISCSIapi(base.ConnectionManager):
                 no_comment.append(line)
         return no_comment
 
+    def _remove_empty_lines(self, list_of_strings):
+        '''get list of strings and return list of strings without empty lines'''
+        no_empty_line = []
+        for line in list_of_strings:
+            content = line.strip()
+            if content:
+                no_empty_line.append(content)
+        return no_empty_line
+
     def _update_node_parameter(self, name, value, target):
         from infi.execute import execute_assert_success
         args = ['iscsiadm', '-m', 'node', '-o', 'update', '-n', name, '-v', value, '-T', target]
@@ -214,6 +223,7 @@ class LinuxISCSIapi(base.ConnectionManager):
         try:
             with open(ISCSI_INITIATOR_IQN_FILE, 'r') as fd:
                 data = self._remove_comments(fd.readlines())
+                data = self._remove_empty_lines(data)
                 assert len(data) == 1, "something isn't right with {}".format(ISCSI_INITIATOR_IQN_FILE)
                 raw_iqn = re.split('InitiatorName=', data[0])
                 return IQN(raw_iqn[1].strip())

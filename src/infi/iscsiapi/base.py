@@ -162,3 +162,12 @@ class ConnectionManager(object):
         '''delete all discovered sessions or only iqn specific active sessions
         '''
         raise NotImplementedError()
+
+    def icmp_connectivity_check(self, ip_address):
+        from logging import getLogger
+        from pythonping import ping
+        logger = getLogger(__name__)
+        result = ping(ip_address, count=1)
+        logger.debug("ICMP ping check connectivity result:\n" + result.__repr__())
+        if not result.success():
+            raise RuntimeError("ICMP connectivity check failed")
