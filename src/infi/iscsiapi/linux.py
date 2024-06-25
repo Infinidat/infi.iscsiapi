@@ -318,7 +318,7 @@ class LinuxSoftwareInitiator(base.SoftwareInitiator):
         ''' In linux, return True if iSCSI initiator sw is installed otherwise return False
         '''
         platform = get_platform_string()
-        if any(dist in platform for dist in ('redhat', 'centos', 'oracle')):
+        if any(dist in platform for dist in ('redhat', 'centos', 'oracle', 'rocky', 'almalinux', 'eurolinux')):
             pkgmgr = infi.pkgmgr.get_package_manager()
             return pkgmgr.is_package_installed('iscsi-initiator-utils')
         if any(dist in platform for dist in ('ubuntu', 'suse')):
@@ -327,7 +327,7 @@ class LinuxSoftwareInitiator(base.SoftwareInitiator):
 
     def install(self):
         platform = get_platform_string()
-        if any(dist in platform for dist in ('redhat', 'centos', 'oracle')):
+        if any(dist in platform for dist in ('redhat', 'centos', 'oracle', 'rocky', 'almalinux', 'eurolinux')):
             pkgmgr = infi.pkgmgr.get_package_manager()
             pkgmgr.install_package('iscsi-initiator-utils')
         if any(dist in platform for dist in ('ubuntu', 'suse')):
@@ -338,7 +338,7 @@ class LinuxSoftwareInitiator(base.SoftwareInitiator):
 
     def uninstall(self):
         platform = get_platform_string()
-        if any(dist in platform for dist in ('redhat', 'centos', 'oracle')):
+        if any(dist in platform for dist in ('redhat', 'centos', 'oracle', 'rocky', 'almalinux', 'eurolinux')):
             pkgmgr = infi.pkgmgr.get_package_manager()
             pkgmgr.remove_package('iscsi-initiator-utils')
         if any(dist in platform for dist in ('ubuntu', 'suse')):
