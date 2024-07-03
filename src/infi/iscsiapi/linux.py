@@ -1,14 +1,15 @@
 from . import base
 from . import auth as iscsiapi_auth
 from infi.dtypes.iqn import IQN
-from infi.os_info import get_platform_string
+from infi.os_info import get_platform_string, system_is_rhel_based
 import infi.pkgmgr
 import os
 
 from logging import getLogger
 logger = getLogger(__name__)
 
-if 'ubuntu' in get_platform_string() or 'suse' in get_platform_string():
+DIST_NAME = get_platform_string().split('-')[1]
+if DIST_NAME in ('ubuntu', 'suse'):
     ISCSI_CONNECTION_CONFIG = '/etc/iscsi/nodes'
 else:
     ISCSI_CONNECTION_CONFIG = '/var/lib/iscsi/nodes'
@@ -317,30 +318,28 @@ class LinuxSoftwareInitiator(base.SoftwareInitiator):
     def is_installed(self):
         ''' In linux, return True if iSCSI initiator sw is installed otherwise return False
         '''
-        platform = get_platform_string()
-        if any(dist in platform for dist in ('redhat', 'centos', 'oracle')):
+        if system_is_rhel_based():
             pkgmgr = infi.pkgmgr.get_package_manager()
             return pkgmgr.is_package_installed('iscsi-initiator-utils')
-        if any(dist in platform for dist in ('ubuntu', 'suse')):
+        if DIST_NAME in ('ubuntu', 'suse'):
             pkgmgr = infi.pkgmgr.get_package_manager()
             return pkgmgr.is_package_installed('open-iscsi')
 
     def install(self):
-        platform = get_platform_string()
-        if any(dist in platform for dist in ('redhat', 'centos', 'oracle')):
+        if system_is_rhel_based():
             pkgmgr = infi.pkgmgr.get_package_manager()
             pkgmgr.install_package('iscsi-initiator-utils')
-        if any(dist in platform for dist in ('ubuntu', 'suse')):
+        if DIST_NAME in ('ubuntu', 'suse'):
             pkgmgr = infi.pkgmgr.get_package_manager()
             pkgmgr.install_package('open-iscsi')
+            platform = get_platform_string()
             if 'suse-12' in platform:
                 self._execute(['service', 'iscsid', 'start'])
 
     def uninstall(self):
-        platform = get_platform_string()
-        if any(dist in platform for dist in ('redhat', 'centos', 'oracle')):
+        if system_is_rhel_based():
             pkgmgr = infi.pkgmgr.get_package_manager()
             pkgmgr.remove_package('iscsi-initiator-utils')
-        if any(dist in platform for dist in ('ubuntu', 'suse')):
+        if DIST_NAME in ('ubuntu', 'suse'):
             pkgmgr = infi.pkgmgr.get_package_manager()
             pkgmgr.remove_package('open-iscsi')
