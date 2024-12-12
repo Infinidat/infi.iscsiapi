@@ -100,7 +100,7 @@ class SolarisISCSIapi(base.ConnectionManager):
                 iqn = line.split()[1]
                 IQN(iqn)  # make sure iqn is valid
                 for ident_line in range(line_number, len(output)):
-                    if 'TPGT: ' in output[ident_line]:
+                    if 'ISID: ' in output[ident_line]:
                         uid = output[ident_line].split()[1]
                     if source_ip_regex.search(output[ident_line]):
                         session = source_ip_regex.search(output[ident_line]).groupdict()
