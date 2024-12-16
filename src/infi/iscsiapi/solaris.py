@@ -4,6 +4,7 @@ from __future__ import unicode_literals
 import six
 
 from infi.execute import execute_assert_success, execute
+from infi.pyutils.lazy import cached_method, clear_cache
 from . import auth as iscsiapi_auth
 from . import base
 from infi.dtypes.iqn import IQN
@@ -30,20 +31,25 @@ class SolarisISCSIapi(base.ConnectionManager):
             logger.error("logger.{} doesn't exist, {!r}".format(log_level, e))
         return execute(cmd)
 
-    def _set_number_of_connection_to_infinibox(self):
+    def _set_number_of_connection_to_infinibox(self, target):
         '''In Solaris we need to configure in advance how many session an initiator can open.
         This to each target
         '''
-        #  Not being used anymore due to INFINIBOX-24755
-        con_number = self._how_many_connections_should_be_configured()
-        logger.info("Changing number of sessions to {}".format(con_number))
-        cmd = ['iscsiadm', 'modify', 'initiator-node', '-c', str(con_number)]
+        connections = 1
+        discovered_targets = self.get_discovered_targets()
+        for discovered_target in discovered_targets:
+            if discovered_target.get_iqn() == target.get_iqn():
+                connections = len(discovered_target.get_endpoints())
+                break
+        logger.info('Changing number of iSCSI sessions for target %s to %s', target.get_iqn(), connections)
+        cmd = ['iscsiadm', 'modify', 'target-param', '-c', str(connections), str(target.get_iqn())]
         self._execute_assert_n_log(cmd)
 
     def _how_many_connections_should_be_configured(self):
         # needs rewrite if used ( 4.0 ), need to verify that first target is infinibox()
-        max_endpoints = len(self.get_discovered_targets()[0].get_endpoints())
-        for target in self.get_discovered_targets():
+        discovered_targets = self.get_discovered_targets()
+        max_endpoints = len(discovered_targets[0].get_endpoints())
+        for target in discovered_targets:
             if max_endpoints < len(target.get_endpoints()):
                 max_endpoints = len(target.get_endpoints())
         return max_endpoints
@@ -69,7 +75,7 @@ class SolarisISCSIapi(base.ConnectionManager):
                 availble_targets.append(session)
         return availble_targets
 
-    def _parse_discovery_address(self, iqn):
+    def _parse_discovery_address(self, iqn, discovered_targets):
         '''get an iqn of discovered target and return the discovery ip address
         '''
         # TODO: support multiple discovery addresses
@@ -81,10 +87,10 @@ class SolarisISCSIapi(base.ConnectionManager):
         regex = re.compile('Discovery Address: 'r'(?P<ip>\d+\.\d+\.\d+\.\d+)\:(?P<port>\d+)')
         for line in process.get_stdout().decode().splitlines():
             discovery_addresses.append(regex.search(line).groupdict()['ip'])
-        for path in self._parse_discovered_targets():
-            if path['iqn'] == iqn:
-                if path['dst_ip'] in discovery_addresses:
-                    return (path['dst_ip'], path['dst_port'])
+        for targets in discovered_targets:
+            if targets['iqn'] == iqn:
+                if targets['dst_ip'] in discovery_addresses:
+                    return (targets['dst_ip'], targets['dst_port'])
 
     def _parse_availble_sessions(self):
         import re
@@ -115,24 +121,28 @@ class SolarisISCSIapi(base.ConnectionManager):
                         break
         return availble_sessions
 
+    @cached_method
     def get_discovered_targets(self):
-        iqn_list = []
+        iqns = []
         targets = []
-        for connectivity in self._parse_discovered_targets():
-            iqn_list.append(connectivity['iqn'])
-        uniq_iqn = list(set(iqn_list))
-        for iqn in uniq_iqn:
+        discovered_targets = self._parse_discovered_targets()
+        for target in discovered_targets:
+            iqns.append(target['iqn'])
+        iqns = list(set(iqns))
+        for iqn in iqns:
             endpoints = []
-            if self._parse_discovery_address(iqn) is None:
+            host_port = self._parse_discovery_address(iqn, discovered_targets)
+            if host_port is None:
                 continue
-            ip_address, port = self._parse_discovery_address(iqn)
-            discovery_endpoint = base.Endpoint(ip_address, port)
-            for connectivity in self._parse_discovered_targets():
-                if connectivity['iqn'] == iqn:
-                    endpoints.append(base.Endpoint(connectivity['dst_ip'], connectivity['dst_port']))
-            targets.append(base.Target(endpoints, discovery_endpoint, iqn))
+            host, port = host_port
+            endpoint = base.Endpoint(host, port)
+            for target in discovered_targets:
+                if target['iqn'] == iqn:
+                    endpoints.append(base.Endpoint(target['dst_ip'], target['dst_port']))
+            targets.append(base.Target(endpoints, endpoint, iqn))
         return targets
 
+    @cached_method
     def get_source_iqn(self):
         '''return infi.dtypes.iqn type iqn if iscsi initiator file exists
         '''
@@ -154,6 +164,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         NOTE: this restart the iscsi service and may fail active sessions !
         in Solaris, this doesn't save a copy of the old IQN
         '''
+        clear_cache(self)
         IQN(iqn)   # checks iqn is valid
         old_iqn = self.get_source_iqn()  # check file exist and valid
         execute_assert_success(['iscsiadm', 'modify', 'initiator-node', '-N', iqn])
@@ -227,19 +238,21 @@ class SolarisISCSIapi(base.ConnectionManager):
         '''initiate discovery and returns a list of dicts which contain all available targets
         '''
         from .iscsi_exceptions import DiscoveryFailed
+        clear_cache(self)
         endpoints = []
         self._modify_initiator('--authentication', 'none')
         args = ['iscsiadm', 'add', 'discovery-address', str(ip_address) + ':' + str(port)]
         self._execute_assert_n_log(args)
-        for target_connectivity in self._parse_discovered_targets():
-            if target_connectivity['dst_ip'] == ip_address:
-                iqn = target_connectivity['iqn']
+        discovered_targets = self._parse_discovered_targets()
+        for target in discovered_targets:
+            if target['dst_ip'] == ip_address:
+                iqn = target['iqn']
                 break
         else:
             raise DiscoveryFailed()
-        for target_connectivity in self._parse_discovered_targets():
-            if iqn == target_connectivity['iqn']:
-                endpoints.append(base.Endpoint(target_connectivity['dst_ip'], target_connectivity['dst_port']))
+        for target in discovered_targets:
+            if iqn == target['iqn']:
+                endpoints.append(base.Endpoint(target['dst_ip'], target['dst_port']))
         return base.Target(endpoints, base.Endpoint(ip_address, port), iqn)
 
     def undiscover(self, target=None):
@@ -247,6 +260,7 @@ class SolarisISCSIapi(base.ConnectionManager):
         discovery endpoints
         '''
         import re
+        clear_cache(self)
         if target:
             ip_address = target.get_discovery_endpoint().get_ip_address()
             self._execute_n_log(['iscsiadm', 'remove', 'discovery-address', ip_address])
@@ -262,10 +276,12 @@ class SolarisISCSIapi(base.ConnectionManager):
                              "Therefore, login to a single endpoint couldn't be implemented")
 
     def login_all(self, target, auth=None):
+        clear_cache(self)
         if auth is None:
             auth = iscsiapi_auth.NoAuth()
         logger.info("login_all in Solaris login to all available Targets !")
         logger.warn("Performing login in Solaris disconnect momentarily all previous sessions from all targets")
+        self._set_number_of_connection_to_infinibox(target)
         self._set_auth(auth, target.get_iqn())
         self._disable_iscsi_auto_login()
         self._enable_iscsi_auto_login()
@@ -275,23 +291,27 @@ class SolarisISCSIapi(base.ConnectionManager):
         raise NotImplemented("Logout from a single session isn't supported in Solaris")
 
     def logout_all(self, target):
+        clear_cache(self)
         logger.warn("Performing logout in Solaris disconnect momentarily all sessions from all targets")
         self.undiscover(target)
         self._disable_iscsi_auto_login()
         self._enable_iscsi_auto_login()
 
+    @cached_method
     def get_sessions(self, target=None):
         '''receive a target or None and return a list of all available sessions
         '''
         # TODO: add HCT to session
+        iqn = self.get_source_iqn()
+        availble_sessions = self._parse_availble_sessions()
         def get_sessions_for_target(target):
             from infi.dtypes.hctl import HCT
             target_sessions = []
-            for session in self._parse_availble_sessions():
+            for session in availble_sessions:
                 if session['iqn'] == target.get_iqn():
                     hct = HCT(session['src_ip'], 0, session['dst_ip'])
                     target_sessions.append(base.Session(target, base.Endpoint(session['dst_ip'], session['dst_port']),
-                                 session['src_ip'], self.get_source_iqn(), session['uid'], hct))
+                                 session['src_ip'], iqn, session['uid'], hct))
             return target_sessions
 
         if target:
