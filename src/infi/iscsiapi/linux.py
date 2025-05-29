@@ -9,7 +9,7 @@ from logging import getLogger
 logger = getLogger(__name__)
 
 DIST_NAME = get_platform_string().split('-')[1]
-if DIST_NAME in ('ubuntu', 'suse'):
+if DIST_NAME in ('debian', 'ubuntu', 'suse'):
     ISCSI_CONNECTION_CONFIG = '/etc/iscsi/nodes'
 else:
     ISCSI_CONNECTION_CONFIG = '/var/lib/iscsi/nodes'
@@ -145,12 +145,16 @@ class LinuxISCSIapi(base.ConnectionManager):
         return sessions
 
     def _reload_iscsid_service(self):
-        if os.path.isfile('/bin/systemctl'):
-            self._execute_assert_success(['systemctl', 'restart', 'iscsid'])
+        # Some Linux distros, like Suse, Ubuntu or Debian provides
+        # two subsystems to manage system services, but not all
+        # services are available as a systemd units. So, first
+        # check for the system-v service, then for systemd.
+        if os.path.isfile('/etc/init.d/open-iscsi'):
+            self._execute_assert_success(['service', 'open-iscsi', 'restart'])
         elif os.path.isfile('/etc/init.d/iscsid'):
             self._execute_assert_success(['service', 'iscsid', 'restart'])
-        elif os.path.isfile('/etc/init.d/open-iscsi'):
-            self._execute_assert_success(['service', 'open-iscsi', 'restart'])
+        elif os.path.isfile('/bin/systemctl'):
+            self._execute_assert_success(['systemctl', 'restart', 'iscsid'])
         else:
             logger.error("couldn't find /bin/systemctl or /usr/sbin/service, failed reloading")
 
@@ -321,7 +325,7 @@ class LinuxSoftwareInitiator(base.SoftwareInitiator):
         if system_is_rhel_based():
             pkgmgr = infi.pkgmgr.get_package_manager()
             return pkgmgr.is_package_installed('iscsi-initiator-utils')
-        if DIST_NAME in ('ubuntu', 'suse'):
+        if DIST_NAME in ('debian', 'ubuntu', 'suse'):
             pkgmgr = infi.pkgmgr.get_package_manager()
             return pkgmgr.is_package_installed('open-iscsi')
 
@@ -329,7 +333,7 @@ class LinuxSoftwareInitiator(base.SoftwareInitiator):
         if system_is_rhel_based():
             pkgmgr = infi.pkgmgr.get_package_manager()
             pkgmgr.install_package('iscsi-initiator-utils')
-        if DIST_NAME in ('ubuntu', 'suse'):
+        if DIST_NAME in ('debian', 'ubuntu', 'suse'):
             pkgmgr = infi.pkgmgr.get_package_manager()
             pkgmgr.install_package('open-iscsi')
             platform = get_platform_string()
@@ -340,6 +344,6 @@ class LinuxSoftwareInitiator(base.SoftwareInitiator):
         if system_is_rhel_based():
             pkgmgr = infi.pkgmgr.get_package_manager()
             pkgmgr.remove_package('iscsi-initiator-utils')
-        if DIST_NAME in ('ubuntu', 'suse'):
+        if DIST_NAME in ('debian', 'ubuntu', 'suse'):
             pkgmgr = infi.pkgmgr.get_package_manager()
             pkgmgr.remove_package('open-iscsi')
