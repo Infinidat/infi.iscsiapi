@@ -1,7 +1,8 @@
 Overview
 ========
 This package provides a cross-platform API for working with iSCSI storage systems.
-Currently supported operating systems are Linux (Ubuntu, Redhat, SUSE) and Windows. Support for Solaris and AIX is underway.
+Currently supported operating systems are Linux (Debian, Ubuntu, Redhat and clones, SUSE) and Windows.
+Support for Solaris and AIX is underway.
 
 Usage
 =====
