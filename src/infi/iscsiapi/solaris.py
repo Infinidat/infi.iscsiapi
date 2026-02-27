@@ -1,6 +1,7 @@
 from __future__ import unicode_literals
 
 
+import os
 import six
 
 from infi.execute import execute_assert_success, execute
@@ -12,6 +13,8 @@ from infi.os_info import get_platform_string
 
 from logging import getLogger
 logger = getLogger(__name__)
+
+PKGINFO = os.path.join(os.path.sep, 'usr', 'bin', 'pkginfo')
 
 
 class SolarisISCSIapi(base.ConnectionManager):
@@ -335,8 +338,8 @@ class SolarisSoftwareInitiator(base.SoftwareInitiator):
         ''' Return True if iSCSI initiator sw is installed otherwise return False
         '''
         if 'solaris' in get_platform_string():
-            process1 = execute('pkginfo', '-q', 'SUNWiscsir')
-            process2 = execute('pkginfo', '-q', 'SUNWiscsiu')
+            process1 = execute(PKGINFO, '-q', 'SUNWiscsir')
+            process2 = execute(PKGINFO, '-q', 'SUNWiscsiu')
             if process1.get_returncode() == process2.get_returncode() == 0:
                 return True
             else:
