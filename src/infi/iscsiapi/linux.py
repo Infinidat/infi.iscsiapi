@@ -9,10 +9,13 @@ from logging import getLogger
 logger = getLogger(__name__)
 
 DIST_NAME = get_platform_string().split('-')[1]
-if DIST_NAME in ('debian', 'ubuntu', 'suse'):
-    ISCSI_CONNECTION_CONFIG = '/etc/iscsi/nodes'
-else:
-    ISCSI_CONNECTION_CONFIG = '/var/lib/iscsi/nodes'
+# Open-iSCSI used /etc/iscsi as its database root on some distributions,
+# while newer releases use /var/lib/iscsi. Read both locations so that this
+# also works on upgraded hosts which may still have records in the old one.
+ISCSI_CONNECTION_CONFIGS = (
+    '/var/lib/iscsi/nodes',
+    '/etc/iscsi/nodes',
+)
 ISCSI_INITIATOR_IQN_FILE = '/etc/iscsi/initiatorname.iscsi'
 GENERATE_COMMAND = 'iscsi-iname'
 
@@ -28,13 +31,13 @@ class LinuxISCSIapi(base.ConnectionManager):
         logger.debug("Running: {}".format(cmd))
         return execute_assert_success(cmd)
 
-    def _parse_discovery_endpoint(self, iqn):
+    def _parse_discovery_endpoint(self, iqn, connection_config):
         '''get an iqn of discovered target and return the discovery ip address
         '''
         import re
         IQN(iqn)  # make sure it's a valid iqn
-        for end_point in os.listdir(os.path.join(ISCSI_CONNECTION_CONFIG, iqn)):
-            filepath = os.path.join(ISCSI_CONNECTION_CONFIG, iqn, end_point)
+        for end_point in os.listdir(os.path.join(connection_config, iqn)):
+            filepath = os.path.join(connection_config, iqn, end_point)
             # HPT-2193 filepath could be a file with the node info, or a dir that contains a file "default" which
             # has the information
             if os.path.isdir(filepath):
@@ -52,18 +55,44 @@ class LinuxISCSIapi(base.ConnectionManager):
                 return base.Endpoint(ip.group(1), int(port.group(1)))
 
     def get_discovered_targets(self):
-        targets = []
-        if not os.path.isdir(ISCSI_CONNECTION_CONFIG):
-            return targets
-        for iqn in os.listdir(ISCSI_CONNECTION_CONFIG):
-            endpoints = []
-            for end_point in os.listdir(os.path.join(ISCSI_CONNECTION_CONFIG, iqn)):
-                dst_ip, dst_port = end_point.split(",")[:2]
-                endpoints.append(base.Endpoint(dst_ip, int(dst_port)))
-            discovery_endpoint = self._parse_discovery_endpoint(iqn)
-            # HPT-2193 discovery_endpoint could be None, we must not fail because of this
-            targets.append(base.Target(endpoints, discovery_endpoint, iqn))
-        return targets
+        target_info = {}
+        target_order = []
+
+        for connection_config in ISCSI_CONNECTION_CONFIGS:
+            if not os.path.isdir(connection_config):
+                continue
+            for iqn in os.listdir(connection_config):
+                iqn_path = os.path.join(connection_config, iqn)
+                if not os.path.isdir(iqn_path):
+                    continue
+
+                if iqn not in target_info:
+                    target_info[iqn] = {
+                        'endpoints': [],
+                        'discovery_endpoint': None,
+                    }
+                    target_order.append(iqn)
+
+                info = target_info[iqn]
+                for end_point in os.listdir(iqn_path):
+                    try:
+                        dst_ip, dst_port = end_point.split(",")[:2]
+                        endpoint = base.Endpoint(dst_ip, int(dst_port))
+                    except (TypeError, ValueError):
+                        logger.debug("ignoring invalid iSCSI node entry {}".format(
+                            os.path.join(iqn_path, end_point)))
+                        continue
+                    if endpoint not in info['endpoints']:
+                        info['endpoints'].append(endpoint)
+
+                discovery_endpoint = self._parse_discovery_endpoint(iqn, connection_config)
+                if info['discovery_endpoint'] is None and discovery_endpoint is not None:
+                    info['discovery_endpoint'] = discovery_endpoint
+
+        # HPT-2193 discovery_endpoint could be None, we must not fail because of this
+        return [base.Target(target_info[iqn]['endpoints'],
+                            target_info[iqn]['discovery_endpoint'], iqn)
+                for iqn in target_order]
 
     def _iter_sessions_in_sysfs(self):
         import re
@@ -266,7 +295,15 @@ class LinuxISCSIapi(base.ConnectionManager):
 
         discovery_endpoint = base.Endpoint(ip_address, port)
         targets = self.get_discovered_targets()
-        return [target for target in targets if discovery_endpoint in target.get_endpoints()][0]
+        matching_targets = [target for target in targets
+                            if discovery_endpoint in target.get_endpoints()]
+        if not matching_targets:
+            from .iscsi_exceptions import DiscoveryFailed
+            message = ("iSCSI discovery at {}:{} succeeded, but no matching "
+                       "target record was found in {}")
+            raise DiscoveryFailed(message.format(
+                ip_address, port, ', '.join(ISCSI_CONNECTION_CONFIGS)))
+        return matching_targets[0]
 
     def login(self, target, endpoint, auth=None, num_of_connections=1):
         if auth is None:
