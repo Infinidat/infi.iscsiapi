@@ -208,7 +208,8 @@ class WindowsISCSIapi(base.ConnectionManager):
                               AuthType=auth_type,
                               Key=0,
                               Mapping_Count=0)
-        logger.info("running iscsicli LoginTarget {!r}".format(args))
+        logger.info("running iscsicli %s for target %s at %s:%s (CHAP credentials omitted)",
+                    login_command, target.get_iqn(), endpoint.get_ip_address(), endpoint.get_port())
         process = execute(args.split())
         if int(process.get_returncode()) != 0:
             logger.info("couldn't login to {!r} {!r} {!r} because: {!r}"
